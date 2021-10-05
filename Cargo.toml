@@ -1,5 +1,5 @@
 [package]
-name = "utf8fy"
+name = "utf8ify"
 version = "0.1.0"
 edition = "2018"
 
