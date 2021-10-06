@@ -5,6 +5,11 @@ Since this library depends on [`encoding_rs`](https://github.com/hsivonen/encodi
 If malformed byte sequences are found, they are replaced with REPLACEMENT CHARACTER(U+FFFD).  
 If the auto-detection is considered it failed, the input texts are output as-is, meaning no conversion takes place, with an error message emitted.  
 
+## Installation
+
+
+## Usage
+
 
 ## Options  
 ```  
