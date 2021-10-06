@@ -4,7 +4,8 @@ pub fn guess() {
     // utf16
     let mut hoge = cd::EncodingDetector::new();
     // let string = b"\x72\xac\x30\x68\x73\x2b"; // 犬と猫 in UTF-16
-    let string = b"\xfe\xff\x30\x88\x30\x46\x30\x53\x30\x5d"; // ようこそ in UTF-16
+    // let string = b"\xfe\xff\x30\x88\x30\x46\x30\x53\x30\x5d"; // ようこそ in UTF-16
+    let string = b"\xfe\xff\x30\x88\x30\x46\x30\x53\x30\x5d\x00\x0a"; // ようこそ in UTF-16 without BOM
     hoge.feed(string, false);
     let (fuga, success) = hoge.guess_assess(None, true);
     println!("{:?}, {:?}, {:?}", success, fuga, fuga.decode(string));
