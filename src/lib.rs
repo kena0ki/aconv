@@ -1,4 +1,10 @@
+mod option;
+
 use chardetng as cd;
+use std::io::Read;
+use std::fs;
+
+pub use option::Opt;
 
 pub fn guess() {
     // utf16
@@ -47,8 +53,20 @@ pub fn guess() {
     let (fuga, success) = hoge.guess_assess(None, true);
     println!("{:?}, {:?}, {:?}", success, fuga, fuga.decode(string));
 }
+
+pub fn guess_file(opt: option::Opt) {
+    if let Some(path) = opt.files.iter().next() {
+        let mut buf = vec![];
+        let mut file = fs::File::open(path).unwrap();
+        file.read_to_end(&mut buf);
+    }
+}
+
+
 #[cfg(test)]
 mod tests {
+    use std::io::Read;
+
     #[test]
     fn it_works() {
         let s = "hoge";
@@ -58,6 +76,14 @@ mod tests {
         // println!("{}",1 << 10);
         // println!("{}",2_i32.pow(10));
         super::guess();
+    }
+    #[test]
+    fn gif() {
+        let opt = super::Opt::new();
+        let mut buf = vec![];
+        let mut file = super::fs::File::open("demo.gif").unwrap();
+        file.read_to_end(&mut buf);
+        super::guess_file();
     }
 }
 
