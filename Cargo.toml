@@ -4,12 +4,16 @@ version = "0.1.0"
 edition = "2018"
 authors = ["kena0ki"]
 license = "MIT OR Apache-2.0"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+description = "Convert texts from an auto-detected encoding to UTF-8 or a specified encoding"
+documentation = "https://docs.rs/utf8ify"
+repository = "https://github.com/kena0ki/utf8ify"
+keywords = ["encoding", "UTF-8", "unicode", "charset", "i18n" ]
+categories = ["Encoding", "Command line utilities", "Text processing", "Internationalization (i18n)"]
+license = "Apache-2.0 OR MIT"
+readme = "README.md"
 
 [dependencies]
 chardetng = "0.1.14"
-ripgrep = "13.0.0"
 encoding_rs = "0.8.28"
-pico-args = "0.4.2"
+structopt = "0.3.23"
 
