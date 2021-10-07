@@ -9,32 +9,30 @@ use std::path::PathBuf;
 #[derive(StructOpt, Debug)]
 #[structopt(name = "8fy")]
 struct Opt {
-    /// Print version info and exit
+    /// Prints version info and exit
     #[structopt(long)]
     version: bool,
 
     /// The encoding of the output.
-    /// Default is utf-8.
-    #[structopt(short, long)]
-    to_code: String,
+    #[structopt(name = "ENCODING", short = "t", long = "to-code", default_value = "UTF-8")]
+    to: String,
 
     /// Output directory.
     /// If input arguments contain directories, the directory hierarchies are preserved under DIRECTORY.
-    #[structopt(short, long, parse(from_os_str))]
-    output_directory: PathBuf,
+    #[structopt(name = "DIRECTORY", short = "o", long = "output", parse(from_os_str))]
+    output: Option<PathBuf>,
 
-    /// Print supported encodings.
+    /// Prints supported encodings.
     #[structopt(short, long)]
     list: bool,
 
-    /// Threshold (0-100) of non-text characters occurrence.
+    /// Threshold (0-100) of non-text character occurrence.
     /// Above this threshold in decoded texts, the auto-detection is treated as it failed.
     /// In that case the input texts are output as-is with an error message emitted.
-    /// The default value is 0.
-    #[structopt(short, long, default_value = "0")]
+    #[structopt(name = "PERCENTAGE", short = "n", long = "non-text-threshold", default_value = "0")]
     non_text_threshold: u8,
 
-    /// Print only auto-detected encodings without decoded texts.
+    /// Prints only auto-detected encodings without decoded texts.
     #[structopt(short, long)]
     encoding: bool,
 
@@ -43,7 +41,7 @@ struct Opt {
     quiet: bool,
 
     /// Files (or directories) to process
-    #[structopt(name = "FILE(DIRECTORY)", parse(from_os_str))]
+    #[structopt(name = "FILE", parse(from_os_str))]
     files: Vec<PathBuf>,
 }
 
