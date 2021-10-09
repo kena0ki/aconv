@@ -17,83 +17,56 @@ pub fn cli(opt: option::Opt) {
     };
 
     let mut stdout = std::io::stdout();
-    controller(opt, &mut file, &mut stdout)
+    let to_code = enc::Encoding::for_label(opt.to.as_bytes()).unwrap_or(&enc::UTF_8_INIT);
+    let mut encoder = to_code.new_encoder();
+    controller(&mut file, &mut stdout, &mut encoder);
 }
 
-pub fn controller(opt: option::Opt, read: &mut impl io::Read, write: &mut impl io::Write) {
+pub fn controller(read: &mut impl io::Read, write: &mut impl io::Write, encoder: &mut enc::Encoder) {
 
     let mut input_buffer = [0u8; 5 * (1 << 10)]; // 5K bytes
-    let mut decoded_buffer = [0u8; 10 * (1 << 10)]; // 10K bytes
-    let mut decoded_str =
-        std::str::from_utf8_mut(&mut decoded_buffer[..]).unwrap();
+    let mut decode_buffer = [0u8; 10 * (1 << 10)]; // 10K bytes
+    let mut decode_buffer_str =
+        std::str::from_utf8_mut(&mut decode_buffer[..]).unwrap();
 
     // BOM sniffing
 
     // guess the input encoding using up to a few Kbytes of byte sequences
-    let (mut buf_first_read, eof) = {
-        let mut buf_next = [0; 1]; // buffer to check if eof
-        let buf_size=read.read(&mut input_buffer).unwrap_or(0);
-        let buf_next_size=read.read(&mut buf_next).unwrap_or(0);
-        let buf_first_read = [&input_buffer[..buf_size], &buf_next[..buf_next_size]].concat();
-        let eof = buf_next_size == 0;
-        (buf_first_read, eof)
-    };
-    let mut guess_ok = guess(&buf_first_read, eof);
+    let mut guess_ok = guess(read, &mut input_buffer);
 
     // try to decode byte sequences being used to guess
-    let (mut decoder, decoder_read, auto_detection_failed)
-        = try_decode_first_bytes(&mut guess_ok, &mut buf_first_read, &mut decoded_str);
+    let mut buf_first_read = &input_buffer[..guess_ok.num_read];
+    let (mut decoder, decoder_read, decoder_written, auto_detection_failed)
+        = try_decode_first_bytes(&mut guess_ok, &mut buf_first_read, &mut decode_buffer_str);
     if auto_detection_failed {
-        if let Err(cause) = write.write_all(&buf_first_read) {
-            exit_with_io_error("Error writing output", cause);
-        }
-        if let Err(cause) = io::copy(read, write) {
-            exit_with_io_error("Error writing output", cause);
-        }
+        try_write(|| write.write_all(&buf_first_read));
+        try_write(|| io::copy(read, write).map(|_| ()));
         return;
     }
-    if let Err(cause) = write.write_all(decoded_str.as_bytes()) {
-        exit_with_io_error("Error writing output", cause);
-    }
-    if guess_ok.eof && decoder_read == guess_ok.num_fed {
+    try_write(|| write.write_all(&decode_buffer_str.as_bytes()[..decoder_written]));
+    if guess_ok.eof && decoder_read >= guess_ok.num_fed {
         return;
     }
 
     // decode rest of bytes in buffer
-    let buf_not_fed_yet= &buf_first_read[decoder_read..];
-    let mut decoder_input_start = 0;
-    loop {
-        let (decoder_result, decoder_read, decoder_written, _) =
-            decoder.decode_to_str(&buf_not_fed_yet[decoder_input_start..], &mut decoded_str, guess_ok.eof);
-        decoder_input_start += decoder_read;
-        if decoder_result == enc::CoderResult::InputEmpty {
-            break;
-        }
-        if let Err(cause) = write.write_all(decoded_str.as_bytes()) {
-            exit_with_io_error("Error writing output", cause);
-        }
-    }
-    if guess_ok.eof {
-        return;
-    }
 
     // decode bytes remaining in file
+    decode_file(read, write, &mut decoder, &mut input_buffer, decode_buffer_str, decoder_read, encoder);
+}
+
+fn decode_file(read: &mut impl io::Read,write: &mut impl io::Write, decoder: &mut enc::Decoder,
+    input_buffer: &mut [u8], decode_buffer_str: &mut str, mut decoder_input_start: usize, encoder: &mut enc::Encoder) {
+    let mut first = true;
     loop {
-        match read.read(&mut input_buffer) {
+        match read.read(input_buffer) {
             Ok(n) => {
                 let eof = n == 0;
-                let mut decoder_input_start = 0;
-                loop {
-                    let (decoder_result, decoder_read, _, _) =
-                        decoder.decode_to_str(&input_buffer[decoder_input_start..n], &mut decoded_str, eof);
-                    decoder_input_start += decoder_read;
-                    if decoder_result == enc::CoderResult::InputEmpty {
-                        break;
-                    }
-                    if let Err(cause) = write.write_all(decoded_str.as_bytes()) {
-                        exit_with_io_error("Error writing output", cause);
-                    }
+                if ! first {
+                    decoder_input_start = 0;
+                } else {
+                    first = false;
                 }
+                conv(write, decoder, input_buffer, decode_buffer_str, decoder_input_start, n, eof, encoder);
                 if eof {
                     break;
                 }
@@ -105,9 +78,36 @@ pub fn controller(opt: option::Opt, read: &mut impl io::Read, write: &mut impl i
     };
 }
 
-fn try_io_and_exit_on_error(message: &str, mut fnc: impl FnMut() -> Result<(),io::Error>) {
+struct IoParam<R: io::Read,W: io::Write> {
+    read: R,
+    write: W,
+}
+
+fn conv(write: &mut impl io::Write, decoder: &mut enc::Decoder, input_buffer: &mut [u8], decode_buffer_str: &mut str,
+    mut decoder_input_start: usize, decoder_input_end: usize, eof: bool, encoder: &mut enc::Encoder) {
+    loop {
+        let (decoder_result, decoder_read, decoder_written, _) =
+            decoder.decode_to_str(&input_buffer[decoder_input_start..decoder_input_end], decode_buffer_str, eof);
+        decoder_input_start += decoder_read;
+        if decoder_result == enc::CoderResult::InputEmpty {
+            break;
+        }
+        if encoder.encoding() == enc::UTF_8 {
+            try_write(|| write.write_all(&decode_buffer_str.as_bytes()[..decoder_written]));
+        } else {
+            let mut encoder_input_start = 0;
+            loop {
+                let (encoder_result, encoder_read, encoder_written, _) =
+                    encoder.encode_from_utf8(&decode_buffer_str[encoder_input_start..decoder_written], input_buffer, eof);
+            }
+        }
+    }
+}
+
+
+fn try_write(mut fnc: impl FnMut() -> Result<(),io::Error>) {
     if let Err(cause) = fnc() {
-        exit_with_io_error(message, cause);
+        exit_with_io_error("Error writing output", cause);
     }
 }
 
@@ -118,19 +118,28 @@ fn exit_with_io_error(message: &str, cause: io::Error) {
 
 struct GuessResult {
     encoding: &'static enc::Encoding,
+    num_read: usize,
     num_fed: usize,
     eof: bool,
 }
 
-fn guess(buf: &[u8], eof: bool) -> GuessResult {
-    let buf_size = buf.len();
+fn guess(read: &mut impl io::Read, input_buffer: &mut [u8]) -> GuessResult {
+    let (buf_first_read, eof) = {
+        let mut buf_next = [0; 1]; // buffer to check if eof
+        let buf_size=read.read(input_buffer).unwrap_or(0);
+        let buf_next_size=read.read(&mut buf_next).unwrap_or(0);
+        let buf_first_read = [&input_buffer[..buf_size], &buf_next[..buf_next_size]].concat();
+        let eof = buf_next_size == 0;
+        (buf_first_read, eof)
+    };
+    let num_read = buf_first_read.len();
     let mut det = cd::EncodingDetector::new();
     let mut aschii_cnt = 0;
     let mut num_fed = 0;
-    let mut exhausted = buf_size == num_fed;
-    for b in buf.iter() {
+    let mut exhausted = num_read == num_fed;
+    for b in buf_first_read.iter() {
         num_fed+=1;
-        exhausted = buf_size == num_fed;
+        exhausted = num_read == num_fed;
         if det.feed(&[*b], eof && exhausted) {
             aschii_cnt+=1;
             if aschii_cnt > 1000 { // above 1000 non-aschii bytes
@@ -143,18 +152,19 @@ fn guess(buf: &[u8], eof: bool) -> GuessResult {
     let guessed = det.guess(top_level_domain, allow_utf8);
     return GuessResult {
         encoding: guessed,
+        num_read,
         num_fed,
         eof: eof && exhausted,
     };
 }
 
-fn try_decode_first_bytes(guess_file_ok: &mut GuessResult, buf: &[u8], decoded_str: &mut str) -> (enc::Decoder, usize, bool) {
-    let GuessResult{ encoding, num_fed, eof } = *guess_file_ok;
+fn try_decode_first_bytes(guess_file_ok: &mut GuessResult, buf: &[u8], decode_buffer_str: &mut str)
+    -> (enc::Decoder, usize, usize, bool) {
+    let GuessResult{ encoding, num_fed, num_read:_, eof } = *guess_file_ok;
     let mut decoder = encoding.new_decoder();
-    let (decoder_result, decoder_read, _, _) =
-        decoder.decode_to_str(&buf[..num_fed], &mut decoded_str, eof);
+    let (_, decoder_read, decoder_written, _) = decoder.decode_to_str(&buf[..num_fed], decode_buffer_str, eof);
     let mut non_text_cnt = 0;
-    for s in decoded_str.chars() {
+    for s in decode_buffer_str.chars() {
         if let Ok(_) = constants::NON_TEXTS_FREQUENT.binary_search(&s) {
             non_text_cnt+=1;
             continue;
@@ -163,8 +173,8 @@ fn try_decode_first_bytes(guess_file_ok: &mut GuessResult, buf: &[u8], decoded_s
             non_text_cnt+=1;
         }
     }
-    let auto_detection_failed = 0 < (decoded_str.chars().count() / non_text_cnt);
-    (decoder, decoder_read, auto_detection_failed)
+    let auto_detection_failed = 0 < (decode_buffer_str.chars().count() / non_text_cnt);
+    (decoder, decoder_read, decoder_written, auto_detection_failed)
 }
 
 fn is_binary() {
