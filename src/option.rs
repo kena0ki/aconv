@@ -41,6 +41,6 @@ pub struct Opt {
 
     /// Files (or directories) to process
     #[structopt(name = "FILE", parse(from_os_str))]
-    pub files: Vec<PathBuf>,
+    pub paths: Vec<PathBuf>,
 }
 

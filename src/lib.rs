@@ -1,12 +1,158 @@
 mod option;
+mod constants;
 
 use chardetng as cd;
-use std::io::Read;
+use encoding_rs as enc;
+use std::io;
 use std::fs;
+use std::process;
 
 pub use option::Opt;
 
-pub fn guess() {
+pub fn cli(opt: option::Opt) {
+    // check
+    let mut file = match opt.paths.iter().next() {
+        Some(path) => fs::File::open(path).unwrap(),
+        None => return,
+    };
+
+    let mut stdout = std::io::stdout();
+    controller(opt, &mut file, &mut stdout)
+}
+
+pub fn controller(opt: option::Opt, read: &mut dyn io::Read, write: &mut io::Write) {
+
+    // BOM sniffing
+
+    // guess
+    let mut buf = vec![0; 5 * (1 << 10)]; // first 5K bytes
+    let mut buf_next = vec![0; 1]; // variable to check if eof
+    let buf_size=read.read(&mut buf).unwrap_or(0);
+    let buf_next_size=read.read(&mut buf_next).unwrap_or(0);
+    let eof = buf_next_size == 0;
+    let mut guess_ok = guess(&buf[..buf_size], eof);
+
+    // try_decode_first
+    let (mut decoder, decoded_string, last, auto_detection_failed)
+        = try_decode_first_bytes(&mut guess_ok, &mut buf);
+    if auto_detection_failed {
+        if let Err(cause) = write.write_all(&buf) {
+            exit_with_io_error("Error writing output", cause);
+        }
+        if let Err(cause) = io::copy(read, write) {
+            exit_with_io_error("Error writing output", cause);
+        }
+        return;
+    }
+    if last {
+        if let Err(cause) = write.write_all(decoded_string.as_bytes()) {
+            exit_with_io_error("Error writing output", cause);
+        }
+        return;
+    }
+
+    // decode
+}
+
+fn exit_with_io_error(message: &str, cause: io::Error) {
+    eprintln!("{}: {}", message, cause);
+    process::exit(constants::IO_ERROR);
+}
+
+struct GuessResult {
+    encoding: &'static enc::Encoding,
+    num_read: usize,
+    num_fed: usize,
+    eof: bool,
+}
+
+fn guess(buf: &[u8], eof: bool) -> GuessResult {
+    let buf_size = buf.len();
+    let mut det = cd::EncodingDetector::new();
+    let mut aschii_cnt = 0;
+    let mut byte_cnt = 0;
+    for b in buf.iter() {
+        byte_cnt+=1;
+        let exhausted = buf_size == byte_cnt;
+        if det.feed(&[*b], eof && exhausted) {
+            aschii_cnt+=1;
+            if aschii_cnt > 1000 { // above 1000 non-aschii bytes
+                break;
+            }
+        }
+    }
+    let top_level_domain = None;
+    let allow_utf8 = true;
+    let guessed = det.guess(top_level_domain, allow_utf8);
+    return GuessResult {
+        encoding: guessed,
+        num_read: buf_size,
+        num_fed: byte_cnt,
+        eof,
+    };
+}
+
+fn try_decode_first_bytes(guess_file_ok: &mut GuessResult, buf: &[u8]) -> (enc::Decoder, String, bool, bool) {
+    let GuessResult{ encoding, num_read, num_fed, eof } = *guess_file_ok;
+    let mut decoder = encoding.new_decoder();
+    let last = eof && num_read == num_fed;
+    let decoded_string = {
+        let mut decoded_string = String::new();
+        let mut decoder_input_start = 0;
+        loop {
+            let (decoder_result, decoder_read, _) =
+                decoder.decode_to_string(&buf[decoder_input_start..num_fed], &mut decoded_string, last);
+            decoder_input_start += decoder_read;
+            if decoder_result == enc::CoderResult::InputEmpty {
+                break;
+            }
+        }
+        decoded_string
+    };
+    let mut non_text_cnt = 0;
+    for s in decoded_string.chars() {
+        if let Ok(_) = constants::NON_TEXTS_FREQUENT.binary_search(&s) {
+            non_text_cnt+=1;
+            continue;
+        }
+        if let Ok(_) = constants::NON_TEXTS.binary_search(&s) {
+            non_text_cnt+=1;
+        }
+    }
+    let auto_detection_failed = 0 < (num_fed / non_text_cnt);
+    (decoder, decoded_string, last, auto_detection_failed)
+}
+
+fn is_binary() {
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path;
+
+    // #[test]
+    // fn it_works() {
+    //     let s = "hoge";
+    //     let t = s;
+    //     println!("{}, {}",s, t);
+    //     assert_eq!(2 + 2, 4);
+    //     // println!("{}",1 << 10);
+    //     // println!("{}",2_i32.pow(10));
+    //     super::guess();
+    // }
+    #[test]
+    fn gif() {
+        let mut opt = super::Opt::default();
+        let path = path::PathBuf::from("src/test_data/demo.gif");
+        opt.paths.push(path);
+        let (fuga, success) = super::guess(opt).expect("couldn't guess");
+        println!("{:?}, {:?}", success, fuga);
+        let buf = fuga.decode(buf_slice);
+    }
+}
+
+
+fn guess_test() {
     // utf16
     let mut hoge = cd::EncodingDetector::new();
     // let string = b"\x72\xac\x30\x68\x73\x2b"; // 犬と猫 in UTF-16
@@ -53,37 +199,3 @@ pub fn guess() {
     let (fuga, success) = hoge.guess_assess(None, true);
     println!("{:?}, {:?}, {:?}", success, fuga, fuga.decode(string));
 }
-
-pub fn guess_file(opt: option::Opt) {
-    if let Some(path) = opt.files.iter().next() {
-        let mut buf = vec![];
-        let mut file = fs::File::open(path).unwrap();
-        file.read_to_end(&mut buf);
-    }
-}
-
-
-#[cfg(test)]
-mod tests {
-    use std::io::Read;
-
-    #[test]
-    fn it_works() {
-        let s = "hoge";
-        let t = s;
-        println!("{}, {}",s, t);
-        assert_eq!(2 + 2, 4);
-        // println!("{}",1 << 10);
-        // println!("{}",2_i32.pow(10));
-        super::guess();
-    }
-    #[test]
-    fn gif() {
-        let opt = super::Opt::new();
-        let mut buf = vec![];
-        let mut file = super::fs::File::open("demo.gif").unwrap();
-        file.read_to_end(&mut buf);
-        super::guess_file();
-    }
-}
-
