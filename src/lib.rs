@@ -44,35 +44,28 @@ pub fn controller(read: &mut impl io::Read, write: &mut impl io::Write, encoder:
         try_write(|| io::copy(read, write).map(|_| ()));
         return;
     }
-    try_write(|| write.write_all(&decode_buffer_str.as_bytes()[..decoder_written]));
+
+    // write decoded bytes in buffer
+    try_write(|| write.write_all(&decode_buffer_str[..decoder_written].as_bytes()));
     if guess_ok.eof && decoder_read >= guess_ok.num_fed {
         return;
     }
 
     // decode rest of bytes in buffer
-    // decode(write, &mut decoder, &input_buffer[decoder_read..], decode_buffer_str, false);
+    let transcoder = &mut Transcoder::new(&mut decoder, encoder, decode_buffer);
+    transcode_buffer_and_write(write, transcoder, input_buffer, output_buffer, false);
 
     // decode bytes remaining in file
-    let transcoder = &mut Transcoder::new(&mut decoder, encoder, decode_buffer);
-    transcode_file(read, write, transcoder, input_buffer, output_buffer);
+    transcode_file_and_write(read, write, transcoder, input_buffer, output_buffer);
 }
 
-fn transcode_file(read: &mut impl io::Read,write: &mut impl io::Write, transcoder: &mut Transcoder, input_buffer: &mut [u8],
-    output_buffer: &mut [u8]) {
+fn transcode_file_and_write(read: &mut impl io::Read,write: &mut impl io::Write, transcoder: &mut Transcoder,
+    input_buffer: &mut [u8], output_buffer: &mut [u8]) {
     loop {
         match read.read(input_buffer) {
             Ok(num_read) => {
                 let eof = num_read == 0;
-                let mut transcoder_input_start = 0;
-                loop {
-                    let (num_transcoder_read, num_transcoder_written)
-                        = transcoder.transcode(&input_buffer[transcoder_input_start..], output_buffer, eof);
-                    transcoder_input_start+=num_transcoder_read;
-                    try_write(|| write.write_all(&output_buffer[..num_transcoder_written]));
-                    if num_transcoder_read == 0 {
-                        break;
-                    }
-                }
+                transcode_buffer_and_write(write, transcoder, input_buffer, output_buffer, eof);
                 if eof {
                     break;
                 }
@@ -82,6 +75,20 @@ fn transcode_file(read: &mut impl io::Read,write: &mut impl io::Write, transcode
             }
         }
     };
+}
+
+fn transcode_buffer_and_write(write: &mut impl io::Write, transcoder: &mut Transcoder,
+    input_buffer: &mut [u8], output_buffer: &mut [u8], eof: bool) {
+    let mut transcoder_input_start = 0;
+    loop {
+        let (num_transcoder_read, num_transcoder_written)
+            = transcoder.transcode(&input_buffer[transcoder_input_start..], output_buffer, eof);
+        transcoder_input_start+=num_transcoder_read;
+        try_write(|| write.write_all(&output_buffer[..num_transcoder_written]));
+        if num_transcoder_read == 0 {
+            break;
+        }
+    }
 }
 
 struct Transcoder<'a> {
