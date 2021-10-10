@@ -78,9 +78,8 @@ fn decode_file(read: &mut impl io::Read,write: &mut impl io::Write, decoder: &mu
     };
 }
 
-struct IoParam<R: io::Read,W: io::Write> {
-    read: R,
-    write: W,
+struct IoParam {
+    write: io::Write,
 }
 
 fn conv(write: &mut impl io::Write, decoder: &mut enc::Decoder, input_buffer: &mut [u8], decode_buffer_str: &mut str,
