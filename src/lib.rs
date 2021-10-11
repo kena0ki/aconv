@@ -1,6 +1,7 @@
-mod option;
-mod constants;
-mod transcoder;
+pub mod option;
+pub mod constants;
+pub mod transcoder;
+pub mod guess;
 
 use chardetng as cd;
 use encoding_rs as enc;
@@ -8,9 +9,6 @@ use std::io;
 use std::fs;
 use std::str;
 use std::process;
-
-pub use option::Opt;
-pub use transcoder::Transcoder;
 
 pub fn cli(opt: option::Opt) {
     // check
@@ -34,10 +32,17 @@ pub fn controller(read: &mut impl io::Read, write: &mut impl io::Write, encoder:
     // BOM sniffing
 
     // guess the input encoding using up to a few Kbytes of byte sequences
-    let mut guess_ok = guess(read, input_buffer);
+    let (mut buf_first_read, eof) = {
+        let mut buf_eof = [0; 1]; // buffer to check if eof
+        let buf_size=read.read(input_buffer).unwrap_or(0);
+        let buf_eof_size=read.read(&mut buf_eof).unwrap_or(0);
+        let buf_first_read = [&input_buffer[..buf_size], &buf_eof[..buf_eof_size]].concat();
+        let eof = buf_eof_size == 0;
+        (buf_first_read, eof)
+    };
+    let mut guess_ok = guess::guess(&mut buf_first_read, eof);
 
     // try to decode byte sequences being used to guess
-    let mut buf_first_read = &input_buffer[..guess_ok.num_read];
     let (mut decoder, decoder_read, decoder_written, auto_detection_failed)
         = try_decode_first_bytes(&mut guess_ok, &mut buf_first_read, decode_buffer);
     let no_transcoding_needed = decoder.encoding() == encoder.encoding();
@@ -57,14 +62,14 @@ pub fn controller(read: &mut impl io::Read, write: &mut impl io::Write, encoder:
     }
 
     // decode rest of bytes in buffer
-    let transcoder = &mut Transcoder::new(&mut decoder, encoder, decode_buffer);
+    let transcoder = &mut transcoder::Transcoder::new(&mut decoder, encoder, decode_buffer);
     transcode_buffer_and_write(write, transcoder, input_buffer, output_buffer, false);
 
     // decode bytes remaining in file
     transcode_file_and_write(read, write, transcoder, input_buffer, output_buffer);
 }
 
-fn transcode_file_and_write(read: &mut impl io::Read,write: &mut impl io::Write, transcoder: &mut Transcoder,
+fn transcode_file_and_write(read: &mut impl io::Read,write: &mut impl io::Write, transcoder: &mut transcoder::Transcoder,
     input_buffer: &mut [u8], output_buffer: &mut [u8]) {
     loop {
         match read.read(input_buffer) {
@@ -82,7 +87,7 @@ fn transcode_file_and_write(read: &mut impl io::Read,write: &mut impl io::Write,
     };
 }
 
-fn transcode_buffer_and_write(write: &mut impl io::Write, transcoder: &mut Transcoder,
+fn transcode_buffer_and_write(write: &mut impl io::Write, transcoder: &mut transcoder::Transcoder,
     input_buffer: &mut [u8], output_buffer: &mut [u8], eof: bool) {
     let mut transcoder_input_start = 0;
     loop {
@@ -107,51 +112,9 @@ fn exit_with_io_error(message: &str, cause: io::Error) {
     process::exit(constants::IO_ERROR);
 }
 
-struct GuessResult {
-    encoding: &'static enc::Encoding,
-    num_read: usize,
-    num_fed: usize,
-    eof: bool,
-}
-
-fn guess(read: &mut impl io::Read, input_buffer: &mut [u8]) -> GuessResult {
-    let (buf_first_read, eof) = {
-        let mut buf_eof = [0; 1]; // buffer to check if eof
-        let buf_size=read.read(input_buffer).unwrap_or(0);
-        let buf_eof_size=read.read(&mut buf_eof).unwrap_or(0);
-        let buf_first_read = [&input_buffer[..buf_size], &buf_eof[..buf_eof_size]].concat();
-        let eof = buf_eof_size == 0;
-        (buf_first_read, eof)
-    };
-    let num_read = buf_first_read.len();
-    let mut det = cd::EncodingDetector::new();
-    let mut aschii_cnt = 0;
-    let mut num_fed = 0;
-    let mut exhausted = num_read == num_fed;
-    for b in buf_first_read.iter() {
-        num_fed+=1;
-        exhausted = num_read == num_fed;
-        if det.feed(&[*b], eof && exhausted) {
-            aschii_cnt+=1;
-            if aschii_cnt > 1000 { // above 1000 non-aschii bytes
-                break;
-            }
-        }
-    }
-    let top_level_domain = None;
-    let allow_utf8 = true;
-    let guessed = det.guess(top_level_domain, allow_utf8);
-    return GuessResult {
-        encoding: guessed,
-        num_read,
-        num_fed,
-        eof: eof && exhausted,
-    };
-}
-
-fn try_decode_first_bytes(guess_file_ok: &mut GuessResult, buf: &[u8], decode_buffer: &mut [u8])
+fn try_decode_first_bytes(guess_file_ok: &mut guess::GuessResult, buf: &[u8], decode_buffer: &mut [u8])
     -> (enc::Decoder, usize, usize, bool) {
-    let GuessResult{ encoding, num_fed, num_read:_, eof } = *guess_file_ok;
+    let guess::GuessResult{ encoding, num_fed, eof } = *guess_file_ok;
     let mut decoder = encoding.new_decoder();
     let (_, decoder_read, decoder_written, _) = decoder.decode_to_utf8(&buf[..num_fed], decode_buffer, eof);
     let decode_buffer_str = &mut str::from_utf8_mut(&mut decode_buffer[..decoder_written]).unwrap();
@@ -185,7 +148,7 @@ mod tests {
     // }
     #[test]
     fn gif() {
-        let mut opt = super::Opt::default();
+        let mut opt = super::option::Opt::default();
         let path = path::PathBuf::from("src/test_data/demo.gif");
         opt.paths.push(path);
         // let (fuga, success) = super::guess(opt).expect("couldn't guess");
