@@ -101,7 +101,7 @@ struct Transcoder<'a> {
 
 impl<'a> Transcoder<'a> {
     fn new(decoder: &'a mut enc::Decoder, encoder: &'a mut enc::Encoder, buffer: &'a mut[u8]) -> Self {
-        let decode_buffer_str = str::from_utf8_mut(&mut buffer[..]).unwrap();
+        let decode_buffer_str = unsafe { std::mem::transmute(&mut buffer[..]) };
         return Transcoder {
             decoder,
             encoder,
@@ -109,18 +109,18 @@ impl<'a> Transcoder<'a> {
             unencoded_string: String::new(),
         };
     }
-    fn transcode(self: &mut Self, input_buffer: & [u8], output_buffer: & mut [u8], eof: bool) -> (usize, usize) {
+    fn transcode(self: &mut Self, src: & [u8], dst: & mut [u8], last: bool) -> (usize, usize) {
         let is_encoder_utf8 = self.encoder.encoding() == enc::UTF_8;
         if is_encoder_utf8 {
             let (_, num_decoder_read, num_decoder_written, _) =
-                self.decoder.decode_to_utf8(input_buffer, output_buffer, eof);
+                self.decoder.decode_to_utf8(src, dst, last);
             return (num_decoder_read, num_decoder_written);
         } else {
             let (_, num_decoder_read, num_decoder_written, _) =
-                self.decoder.decode_to_str(input_buffer, self.decode_buffer_str, eof);
+                self.decoder.decode_to_str(src, self.decode_buffer_str, last);
             self.unencoded_string.push_str((&self.decode_buffer_str[..num_decoder_written]).into());
             let (_, num_encoder_read, num_encoder_written, _) =
-                self.encoder.encode_from_utf8(self.unencoded_string.as_str(), output_buffer, eof);
+                self.encoder.encode_from_utf8(self.unencoded_string.as_str(), dst, last);
             self.unencoded_string = (&self.decode_buffer_str[num_encoder_read..num_decoder_written]).into();
             return (num_decoder_read, num_encoder_written);
         }
