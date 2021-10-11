@@ -32,34 +32,33 @@ pub fn controller(read: &mut impl io::Read, write: &mut impl io::Write, encoder:
     // BOM sniffing
 
     // guess the input encoding using up to a few Kbytes of byte sequences
-    let (mut buf_first_read, eof) = {
+    let (mut buf_guess, eof) = {
         let mut buf_eof = [0; 1]; // buffer to check if eof
         let buf_size=read.read(input_buffer).unwrap_or(0);
         let buf_eof_size=read.read(&mut buf_eof).unwrap_or(0);
-        let buf_first_read = [&input_buffer[..buf_size], &buf_eof[..buf_eof_size]].concat();
+        let buf_guess = [&input_buffer[..buf_size], &buf_eof[..buf_eof_size]].concat();
         let eof = buf_eof_size == 0;
-        (buf_first_read, eof)
+        (buf_guess, eof)
     };
     let num_non_aschii = 1000; // 1000 chars of non aschii
-    let guess::GuessResult { encoding, num_fed, exhausted } = guess::guess(&mut buf_first_read, num_non_aschii);
-    let eof = eof && exhausted;
+    let guess_result = &mut guess::guess(&mut buf_guess, eof, num_non_aschii);
 
     // try to decode byte sequences being used to guess
     let (mut decoder, decoder_read, decoder_written, auto_detection_failed)
-        = try_decode_first_bytes(encoding, num_fed, eof, &mut buf_first_read, decode_buffer);
+        = try_decode_first_bytes(guess_result, &mut buf_guess, decode_buffer);
     let no_transcoding_needed = decoder.encoding() == encoder.encoding();
     if auto_detection_failed || no_transcoding_needed {
         if auto_detection_failed && !opt.quiet {
             eprintln!("Auto detection failed");
         }
-        try_write(|| write.write_all(&buf_first_read));
+        try_write(|| write.write_all(&buf_guess));
         try_write(|| io::copy(read, write).map(|_| ()));
         return;
     }
 
     // write decoded bytes in buffer
     try_write(|| write.write_all(&decode_buffer[..decoder_written]));
-    if eof && decoder_read >= num_fed {
+    if guess_result.eof && decoder_read >= guess_result.num_fed {
         return;
     }
 
@@ -114,8 +113,9 @@ fn exit_with_io_error(message: &str, cause: io::Error) {
     process::exit(constants::IO_ERROR);
 }
 
-fn try_decode_first_bytes(encoding: &'static enc::Encoding, num_fed: usize, eof: bool, buf: &[u8], decode_buffer: &mut [u8])
+fn try_decode_first_bytes(guess_file_ok: &mut guess::GuessResult, buf: &[u8], decode_buffer: &mut [u8])
     -> (enc::Decoder, usize, usize, bool) {
+    let guess::GuessResult{ encoding, num_fed, eof } = *guess_file_ok;
     let mut decoder = encoding.new_decoder();
     let (_, decoder_read, decoder_written, _) = decoder.decode_to_utf8(&buf[..num_fed], decode_buffer, eof);
     let decode_buffer_str = &mut str::from_utf8_mut(&mut decode_buffer[..decoder_written]).unwrap();
