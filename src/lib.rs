@@ -60,7 +60,7 @@ pub fn controller(read: &mut impl io::Read, write: &mut impl io::Write, encoder:
     }
 
     // decode rest of bytes in buffer
-    let transcoder = &mut transcoder::Transcoder::new(&mut decoder, encoder, decode_buffer);
+    let transcoder = &mut transcoder::Transcoder::new_with_buff_size(&mut decoder, encoder, 10 * 1024).unwrap();
     transcode_buffer_and_write(write, transcoder, input_buffer, output_buffer, false);
 
     // decode bytes remaining in file
