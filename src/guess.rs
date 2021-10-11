@@ -4,10 +4,10 @@ use chardetng as cd;
 pub struct GuessResult {
     pub encoding: &'static enc::Encoding,
     pub num_fed: usize,
-    pub eof: bool,
+    pub exhausted: bool,
 }
 
-pub fn guess(src: &mut [u8], eof: bool) -> GuessResult {
+pub fn guess(src: &mut [u8], num_non_aschii: usize) -> GuessResult {
     let num_read = src.len();
     let mut det = cd::EncodingDetector::new();
     let mut aschii_cnt = 0;
@@ -16,9 +16,9 @@ pub fn guess(src: &mut [u8], eof: bool) -> GuessResult {
     for b in src.iter() {
         num_fed+=1;
         exhausted = num_read == num_fed;
-        if det.feed(&[*b], eof && exhausted) {
+        if det.feed(&[*b], exhausted) {
             aschii_cnt+=1;
-            if aschii_cnt > 1000 { // above 1000 non-aschii bytes
+            if aschii_cnt > num_non_aschii {
                 break;
             }
         }
@@ -29,6 +29,6 @@ pub fn guess(src: &mut [u8], eof: bool) -> GuessResult {
     return GuessResult {
         encoding: guessed,
         num_fed,
-        eof: eof && exhausted,
+        exhausted,
     };
 }
