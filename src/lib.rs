@@ -82,10 +82,10 @@ fn transcode_buffer_and_write(write: &mut impl io::Write, transcoder: &mut Trans
     input_buffer: &mut [u8], output_buffer: &mut [u8], eof: bool) {
     let mut transcoder_input_start = 0;
     loop {
-        let (num_transcoder_read, num_transcoder_written, output)
+        let (num_transcoder_read, num_transcoder_written)
             = transcoder.transcode(&input_buffer[transcoder_input_start..], output_buffer, eof);
         transcoder_input_start+=num_transcoder_read;
-        try_write(|| write.write_all(&output[..num_transcoder_written]));
+        try_write(|| write.write_all(&output_buffer[..num_transcoder_written]));
         if num_transcoder_read == 0 {
             break;
         }
@@ -97,38 +97,32 @@ struct Transcoder<'a> {
     encoder: &'a mut enc::Encoder,
     decode_buffer_str: &'a mut str,
     unencoded_string: String,
-    decode_anyway: bool,
 }
 
 impl<'a> Transcoder<'a> {
-    fn new(decoder: &'a mut enc::Decoder, encoder: &'a mut enc::Encoder, buffer: &'a mut[u8]) -> Self{
+    fn new(decoder: &'a mut enc::Decoder, encoder: &'a mut enc::Encoder, buffer: &'a mut[u8]) -> Self {
         let decode_buffer_str = str::from_utf8_mut(&mut buffer[..]).unwrap();
         return Transcoder {
             decoder,
             encoder,
             decode_buffer_str,
             unencoded_string: String::new(),
-            decode_anyway: false,
         };
     }
-    fn transcode(self: &mut Self, input_buffer: &'a [u8], output_buffer: &'a mut [u8], eof: bool) -> (usize, usize, &[u8]) {
-        let is_decode_utf8 = self.decoder.encoding() == enc::UTF_8;
-        let is_encode_utf8 = self.encoder.encoding() == enc::UTF_8;
-        if ! is_encode_utf8 { // since param of encode_from_utf8() is of type &str,
-                              // decode needs to be done even if input is utf8.
+    fn transcode(self: &mut Self, input_buffer: & [u8], output_buffer: & mut [u8], eof: bool) -> (usize, usize) {
+        let is_encoder_utf8 = self.encoder.encoding() == enc::UTF_8;
+        if is_encoder_utf8 {
+            let (_, num_decoder_read, num_decoder_written, _) =
+                self.decoder.decode_to_utf8(input_buffer, output_buffer, eof);
+            return (num_decoder_read, num_decoder_written);
+        } else {
             let (_, num_decoder_read, num_decoder_written, _) =
                 self.decoder.decode_to_str(input_buffer, self.decode_buffer_str, eof);
             self.unencoded_string.push_str((&self.decode_buffer_str[..num_decoder_written]).into());
             let (_, num_encoder_read, num_encoder_written, _) =
                 self.encoder.encode_from_utf8(self.unencoded_string.as_str(), output_buffer, eof);
             self.unencoded_string = (&self.decode_buffer_str[num_encoder_read..num_decoder_written]).into();
-            return (num_decoder_read, num_encoder_written, output_buffer);
-        } else if ! is_decode_utf8 || self.decode_anyway {
-            let (_, num_decoder_read, num_decoder_written, _) =
-                self.decoder.decode_to_utf8(input_buffer, output_buffer, eof);
-            return (num_decoder_read, num_decoder_written, output_buffer);
-        } else {
-            return (0, 0, input_buffer);
+            return (num_decoder_read, num_encoder_written);
         }
     }
 }
