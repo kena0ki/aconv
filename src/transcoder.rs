@@ -11,7 +11,7 @@ impl<'a> Transcoder<'a> {
     pub fn new(decoder: &'a mut enc::Decoder, encoder: &'a mut enc::Encoder, buffer: &'a mut[u8]) -> Self {
         let decode_buffer_str = unsafe {
             // str::from_utf8_mut can cast &[u8] to &str but there is no reason for buffer being validated to be
-            // utf8 since buffer is used as byte in Decoder::decode_to_str.
+            // utf8 since buffer is used as a byte array in Decoder::decode_to_str.
             std::mem::transmute(&mut buffer[..])
         };
         return Transcoder {
