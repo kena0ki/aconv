@@ -28,8 +28,6 @@ pub fn controller(read: &mut impl io::Read, write: &mut impl io::Write, encoder:
     let decode_buffer = &mut [0u8; 15 * (1 << 10)]; // 15K bytes
     let output_buffer = &mut [0_u8; 10 * (1 << 10)]; // 10K bytes
 
-    // BOM sniffing
-
     // guess the input encoding using up to a few Kbytes of byte sequences
     let (mut buf_guess, eof) = {
         let mut buf_eof = [0; 1]; // buffer to check if eof
@@ -117,7 +115,9 @@ fn try_decode_first_bytes(guess_file_ok: &mut guess::GuessResult, buf: &[u8], de
     let guess::GuessResult{ encoding, num_fed, eof } = *guess_file_ok;
     let mut decoder = encoding.new_decoder();
     let (_, decoder_read, decoder_written, _) = decoder.decode_to_utf8(&buf[..num_fed], decode_buffer, eof);
-    let decode_buffer_str = &mut str::from_utf8_mut(&mut decode_buffer[..decoder_written]).unwrap();
+    let decode_buffer_str = unsafe{
+        str::from_utf8_unchecked_mut(&mut decode_buffer[..decoder_written])
+    };
     let mut non_text_cnt = 0;
     for s in decode_buffer_str.chars() {
         if let Ok(_) = constants::NON_TEXTS_FREQUENT.binary_search(&s) {
