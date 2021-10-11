@@ -20,10 +20,10 @@ pub fn cli(opt: option::Opt) {
     let mut stdout = std::io::stdout();
     let to_code = enc::Encoding::for_label(opt.to.as_bytes()).unwrap_or(&enc::UTF_8_INIT);
     let mut encoder = to_code.new_encoder();
-    controller(&mut file, &mut stdout, &mut encoder);
+    controller(&mut file, &mut stdout, &mut encoder, opt);
 }
 
-pub fn controller(read: &mut impl io::Read, write: &mut impl io::Write, encoder: &mut enc::Encoder) {
+pub fn controller(read: &mut impl io::Read, write: &mut impl io::Write, encoder: &mut enc::Encoder, opt: option::Opt) {
 
     let input_buffer = &mut [0u8; 5 * (1 << 10)]; // 5K bytes
     let decode_buffer = &mut [0u8; 15 * (1 << 10)]; // 15K bytes
@@ -40,7 +40,11 @@ pub fn controller(read: &mut impl io::Read, write: &mut impl io::Write, encoder:
     let mut buf_first_read = &input_buffer[..guess_ok.num_read];
     let (mut decoder, decoder_read, decoder_written, auto_detection_failed)
         = try_decode_first_bytes(&mut guess_ok, &mut buf_first_read, decode_buffer_str);
-    if auto_detection_failed {
+    let no_transcoding_needed = decoder.encoding() == encoder.encoding();
+    if auto_detection_failed || no_transcoding_needed {
+        if auto_detection_failed && !opt.quiet {
+            eprintln!("Auto detection failed");
+        }
         try_write(|| write.write_all(&buf_first_read));
         try_write(|| io::copy(read, write).map(|_| ()));
         return;
@@ -101,7 +105,11 @@ struct Transcoder<'a> {
 
 impl<'a> Transcoder<'a> {
     fn new(decoder: &'a mut enc::Decoder, encoder: &'a mut enc::Encoder, buffer: &'a mut[u8]) -> Self {
-        let decode_buffer_str = unsafe { std::mem::transmute(&mut buffer[..]) };
+        let decode_buffer_str = unsafe {
+            // str::from_utf8_mut can cast &[u8] to &str but there is no reason for buffer being validated to be
+            // utf8 since buffer is used as byte in Decoder::decode_to_str.
+            std::mem::transmute(&mut buffer[..])
+        };
         return Transcoder {
             decoder,
             encoder,
