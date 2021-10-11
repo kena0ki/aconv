@@ -27,8 +27,6 @@ pub fn controller(read: &mut impl io::Read, write: &mut impl io::Write, encoder:
 
     let input_buffer = &mut [0u8; 5 * (1 << 10)]; // 5K bytes
     let decode_buffer = &mut [0u8; 15 * (1 << 10)]; // 15K bytes
-    let decode_buffer_str =
-        &mut std::str::from_utf8_mut(&mut decode_buffer[..]).unwrap();
     let output_buffer = &mut [0_u8; 10 * (1 << 10)]; // 10K bytes
 
     // BOM sniffing
@@ -39,7 +37,7 @@ pub fn controller(read: &mut impl io::Read, write: &mut impl io::Write, encoder:
     // try to decode byte sequences being used to guess
     let mut buf_first_read = &input_buffer[..guess_ok.num_read];
     let (mut decoder, decoder_read, decoder_written, auto_detection_failed)
-        = try_decode_first_bytes(&mut guess_ok, &mut buf_first_read, decode_buffer_str);
+        = try_decode_first_bytes(&mut guess_ok, &mut buf_first_read, decode_buffer);
     let no_transcoding_needed = decoder.encoding() == encoder.encoding();
     if auto_detection_failed || no_transcoding_needed {
         if auto_detection_failed && !opt.quiet {
@@ -51,7 +49,7 @@ pub fn controller(read: &mut impl io::Read, write: &mut impl io::Write, encoder:
     }
 
     // write decoded bytes in buffer
-    try_write(|| write.write_all(&decode_buffer_str[..decoder_written].as_bytes()));
+    try_write(|| write.write_all(&decode_buffer[..decoder_written]));
     if guess_ok.eof && decoder_read >= guess_ok.num_fed {
         return;
     }
@@ -188,11 +186,12 @@ fn guess(read: &mut impl io::Read, input_buffer: &mut [u8]) -> GuessResult {
     };
 }
 
-fn try_decode_first_bytes(guess_file_ok: &mut GuessResult, buf: &[u8], decode_buffer_str: &mut str)
+fn try_decode_first_bytes(guess_file_ok: &mut GuessResult, buf: &[u8], decode_buffer: &mut [u8])
     -> (enc::Decoder, usize, usize, bool) {
     let GuessResult{ encoding, num_fed, num_read:_, eof } = *guess_file_ok;
     let mut decoder = encoding.new_decoder();
-    let (_, decoder_read, decoder_written, _) = decoder.decode_to_str(&buf[..num_fed], decode_buffer_str, eof);
+    let (_, decoder_read, decoder_written, _) = decoder.decode_to_utf8(&buf[..num_fed], decode_buffer, eof);
+    let decode_buffer_str = &mut str::from_utf8_mut(&mut decode_buffer[..decoder_written]).unwrap();
     let mut non_text_cnt = 0;
     for s in decode_buffer_str.chars() {
         if let Ok(_) = constants::NON_TEXTS_FREQUENT.binary_search(&s) {
