@@ -18,7 +18,7 @@ impl<'a> Transcoder<'a> {
         };
     }
     pub fn new_with_buff_size(decoder: &'a mut enc::Decoder, encoder: &'a mut enc::Encoder, size: usize) -> Result<Self, String> {
-        if size < 4 {
+        if size < 4 { // at least 3 bytes are required for encoding_rs to write a valid UTF-8 character.
             let msg = format!("Buffer of size {} is too small", size);
             return Err(msg);
         }
