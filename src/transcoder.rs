@@ -55,3 +55,32 @@ impl<'a> Transcoder<'a> {
     }
 }
 
+
+#[cfg(test)]
+mod tests {
+    macro_rules! test_trans_simple {
+        ($name:ident, $enc:expr, $dec:expr, $srcbytes:expr, $dst:expr) => {
+            #[test]
+            fn $name() {
+                let dec = &mut super::enc::Encoding::for_label($dec.as_bytes()).unwrap().new_decoder();
+                let enc = &mut super::enc::Encoding::for_label($enc.as_bytes()).unwrap().new_encoder();
+                let mut t = super::Transcoder::new(dec, enc);
+                let output = &mut [0u8; 4];
+                let (_,_,written) = t.transcode($srcbytes, output, true);
+                assert_eq!($dst, &output[..written]);
+            }
+        };
+    }
+
+    // This isn't exhaustive obviously, but it lets us test base level support.
+    test_trans_simple!(trans_simple_utf8       ,        "utf-8"   ,          "utf-8" , b"\xD0\x96" , b"\xD0\x96"); // Ж
+    test_trans_simple!(trans_simple_utf16le    ,     "utf-16le"   ,       "utf-16le" , b"\x16\x04" , b"\x16\x04"); // Ж
+    test_trans_simple!(trans_simple_utf16be    ,     "utf-16be"   ,       "utf-16be" , b"\x04\x16" , b"\x04\x16"); // Ж
+    test_trans_simple!(trans_simple_chinese    ,     "chinese"    ,        "chinese" , b"\xA7\xA8" , b"\xA7\xA8"); // Ж
+    test_trans_simple!(trans_simple_korean     ,      "korean"    ,         "korean" , b"\xAC\xA8" , b"\xAC\xA8"); // Ж
+    test_trans_simple!(trans_simple_big5_hkscs ,  "big5-hkscs"    ,     "big5-hkscs" , b"\xC7\xFA" , b"\xC7\xFA"); // Ж
+    test_trans_simple!(trans_simple_gbk        ,         "gbk"    ,            "gbk" , b"\xA7\xA8" , b"\xA7\xA8"); // Ж
+    test_trans_simple!(trans_simple_sjis       ,        "sjis"    ,           "sjis" , b"\x84\x47" , b"\x84\x47"); // Ж
+    test_trans_simple!(trans_simple_eucjp      ,       "euc-jp"   ,         "euc-jp" , b"\xA7\xA8" , b"\xA7\xA8"); // Ж
+    test_trans_simple!(trans_simple_latin1     ,      "latin1"    ,         "latin1" , b"\xA9"     , b"\xA9"    ); // ©
+}
