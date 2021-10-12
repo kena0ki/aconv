@@ -89,11 +89,11 @@ fn transcode_buffer_and_write(write: &mut impl io::Write, transcoder: &mut trans
     input_buffer: &mut [u8], output_buffer: &mut [u8], eof: bool) {
     let mut transcoder_input_start = 0;
     loop {
-        let (num_transcoder_read, num_transcoder_written)
+        let (result, num_transcoder_read, num_transcoder_written)
             = transcoder.transcode(&input_buffer[transcoder_input_start..], output_buffer, eof);
         transcoder_input_start+=num_transcoder_read;
         try_write(|| write.write_all(&output_buffer[..num_transcoder_written]));
-        if num_transcoder_read == 0 {
+        if result == enc::CoderResult::InputEmpty {
             break;
         }
     }

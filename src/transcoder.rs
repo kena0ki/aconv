@@ -29,23 +29,28 @@ impl<'a> Transcoder<'a> {
             unencoded_bytes: Vec::with_capacity(size),
         });
     }
-    pub fn transcode(self: &mut Self, src: & [u8], dst: & mut [u8], last: bool) -> (usize, usize) {
+    pub fn transcode(self: &mut Self, src: & [u8], dst: & mut [u8], last: bool) -> (enc::CoderResult, usize, usize) {
         let is_encoder_utf8 = self.encoder.encoding() == enc::UTF_8;
         if is_encoder_utf8 {
-            let (_, num_decoder_read, num_decoder_written, _) =
+            let (result, num_decoder_read, num_decoder_written, _) =
                 self.decoder.decode_to_utf8(src, dst, last);
-            return (num_decoder_read, num_decoder_written);
+            return (result, num_decoder_read, num_decoder_written);
         } else {
-            let (_, num_decoder_read, num_decoder_written, _) =
+            let (decoder_result, num_decoder_read, num_decoder_written, _) =
                 self.decoder.decode_to_utf8(src, &mut self.decode_buffer, last);
             self.unencoded_bytes.append(&mut self.decode_buffer[..num_decoder_written].to_vec());
             let encoder_input = unsafe {
                 str::from_utf8_unchecked(&self.unencoded_bytes)
             };
-            let (_, num_encoder_read, num_encoder_written, _) =
+            let (encoder_result, num_encoder_read, num_encoder_written, _) =
                 self.encoder.encode_from_utf8(encoder_input, dst, last);
             self.unencoded_bytes = self.unencoded_bytes[num_encoder_read..].to_vec();
-            return (num_decoder_read, num_encoder_written);
+            let result = if decoder_result == enc::CoderResult::InputEmpty && encoder_result == enc::CoderResult::InputEmpty {
+                enc::CoderResult::InputEmpty
+            } else {
+                enc::CoderResult::OutputFull
+            };
+            return (result, num_decoder_read, num_encoder_written);
         }
     }
 }
