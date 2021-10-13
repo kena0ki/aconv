@@ -23,7 +23,6 @@ pub fn cli(opt: option::Opt) {
 pub fn controller(read: &mut impl io::Read, write: &mut impl io::Write, encoding: &'static enc::Encoding, opt: option::Opt) {
 
     let input_buffer = &mut [0u8; 5 * (1 << 10)]; // 5K bytes
-    let decode_buffer = &mut [0u8; 15 * (1 << 10)]; // 15K bytes
     let output_buffer = &mut [0_u8; 10 * (1 << 10)]; // 10K bytes
 
     // guess the input encoding using up to a few Kbytes of byte sequences
@@ -40,7 +39,7 @@ pub fn controller(read: &mut impl io::Read, write: &mut impl io::Write, encoding
     let num_read = {
         let rst = transcoder.guess_and_transcode(&mut buf_guess, output_buffer, eof, num_non_aschii).and_then(|x| {
             if transcoder.src_encoding().unwrap() == transcoder.dst_encoding() {
-                Err("".into())
+                Err("".into()) // TODO not error
             } else {
                 Ok(x)
             }

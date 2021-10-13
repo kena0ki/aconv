@@ -5,10 +5,6 @@ use std::str;
 use crate::constants;
 
 
-pub struct GuessResult {
-    pub num_fed: usize,
-    pub eof: bool,
-}
 pub struct Transcoder {
     src_encoding: Option<&'static enc::Encoding>,
     dst_encoding: &'static enc::Encoding,
@@ -45,18 +41,16 @@ impl<'a> Transcoder {
         });
     }
     pub fn transcode(self: &mut Self, src: & [u8], dst: & mut [u8], last: bool) -> (enc::CoderResult, usize, usize) {
-        let is_encoder_utf8 = self.dst_encoding == enc::UTF_8;
-        let decoder = self.decoder.expect("transcode() should be called after decoder being detected.");
+        let decoder = self.decoder.as_mut().expect("transcode() should be called after decoder being detected.");
         if self.dst_encoding == enc::UTF_8 {
-            let (result, num_decoder_read, num_decoder_written, _) =
-                decoder.decode_to_utf8(src, dst, last);
+            let (result, num_decoder_read, num_decoder_written, _) = decoder.decode_to_utf8(src, dst, last);
             return (result, num_decoder_read, num_decoder_written);
         // } else if self.dst_encoding == enc::UTF_16BE || self.dst_encoding == enc::UTF_16LE {
         //     let (result, num_decoder_read, num_decoder_written, _) =
         //         decoder.decode_to_utf16(src, dst as &mut [u16], last);
         //     return (result, num_decoder_read, num_decoder_written);
         } else {
-            let encoder = self.encoder.unwrap();
+            let encoder = self.encoder.as_mut().unwrap();
             let (decoder_result, num_decoder_read, num_decoder_written, _) =
                 decoder.decode_to_utf8(src, &mut self.decode_buffer, last);
             self.unencoded_bytes.append(&mut self.decode_buffer[..num_decoder_written].to_vec());
@@ -82,10 +76,9 @@ impl<'a> Transcoder {
 
         // guess BOMless encodings
         let num_read = src.len();
-        let mut det = cd::EncodingDetector::new();
         let mut aschii_cnt = 0;
         let mut num_fed = 0;
-        let mut exhausted = num_read == num_fed;
+        let mut exhausted;
         for b in src.iter() {
             num_fed+=1;
             exhausted = num_read == num_fed;
@@ -98,12 +91,8 @@ impl<'a> Transcoder {
         }
         let top_level_domain = None;
         let allow_utf8 = true;
-        let decoder = self.detector.guess(top_level_domain, allow_utf8).new_decoder();
-        let guess_result = &mut GuessResult {
-            num_fed,
-            eof: eof && exhausted,
-        };
-        let (coder_result, decoder_read, decoder_written, auto_detection_failed)
+        let mut decoder = self.detector.guess(top_level_domain, allow_utf8).new_decoder();
+        let (coder_result, decoder_read, decoder_written)
             = Transcoder::try_transcode(self, &mut decoder, num_fed, eof, src, dst)?;
         self.decoder = Some(decoder);
         return Ok((coder_result, decoder_read, decoder_written));
@@ -111,7 +100,7 @@ impl<'a> Transcoder {
 
 
     fn try_transcode(self: &mut Self, decoder: &mut enc::Decoder, num_fed: usize, eof: bool, src: &[u8], dst: & mut [u8])
-        -> Result<(enc::CoderResult, usize, usize, bool), String> {
+        -> Result<(enc::CoderResult, usize, usize), String> {
         let (decoder_result, num_decoder_read, num_decoder_written, _) = decoder.decode_to_utf8(&src[..num_fed], &mut self.decode_buffer, eof);
         let decode_buffer_str = unsafe{
             str::from_utf8_unchecked_mut(&mut self.decode_buffer[..num_decoder_written])
@@ -137,7 +126,7 @@ impl<'a> Transcoder {
         let encoder_input = unsafe {
             str::from_utf8_unchecked(&self.unencoded_bytes)
         };
-        let encoder = self.encoder.unwrap();
+        let encoder = self.encoder.as_mut().unwrap();
         let (encoder_result, num_encoder_read, num_encoder_written, _) =
             encoder.encode_from_utf8(encoder_input, dst, eof);
         self.unencoded_bytes = self.unencoded_bytes[num_encoder_read..].to_vec();
