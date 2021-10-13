@@ -10,20 +10,32 @@
 #  https://marco-c.github.io/2020/11/24/rust-source-based-code-coverage.html
 #
 
+[tasks.clean-profraw]
+script_runner = "@duckscript"
+script = '''
+files = glob_array ./*.profraw
+for f in ${files}
+  rm ${f}
+end
+'''
+
 [tasks.llvm_install]
+toolchain = "nightly"
 install_crate = { rustup_component_name = "llvm-tools-preview" }
 
 # Extends the setting in the built-in settings file:
 #  https://github.com/sagiegurari/cargo-make/blob/ee4e8b40319532079750d26c7d2415c0c6fbc306/src/lib/descriptor/makefiles/rust.toml#L387
 [tasks.build-cov]
 extend = "build"
+toolchain = "nightly"
 env = { RUSTFLAGS="-Zinstrument-coverage" }
-dependencies = ["llvm_install"]
+dependencies = ["llvm_install", "clean-profraw"]
 
 # Extends the setting in the built-in settings file:
 #  https://github.com/sagiegurari/cargo-make/blob/ee4e8b40319532079750d26c7d2415c0c6fbc306/src/lib/descriptor/makefiles/rust.toml#L411
 [tasks.test-cov]
 extend = "test"
+toolchain = "nightly"
 env = { LLVM_PROFILE_FILE="your_name-%p-%m.profraw" }
 dependencies = ["build-cov"]
 
@@ -33,6 +45,7 @@ dependencies = ["build-cov"]
 clear = true
 description = "Runs source-based code coverage."
 category = "Test"
-command = "grcov . --binary-path ./target/debug -s . -t html --branch --ignore-not-existing -o ./target/debug/coverage/"
+script_runner = "@shell"
+script = "RUSTUP_TOOLCHAIN=nightly grcov . --binary-path ./target/debug -s . -t html --branch --ignore-not-existing -o ./target/debug/coverage/"
 dependencies = ["test-cov"]
 
