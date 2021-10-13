@@ -40,15 +40,17 @@ impl<'a> Transcoder {
             detector: cd::EncodingDetector::new(),
         });
     }
-    pub fn transcode(self: &mut Self, src: & [u8], dst: & mut [u8], last: bool) -> (enc::CoderResult, usize, usize) {
+    pub fn transcode(self: &mut Self, src: &[u8], dst: &mut [u8], last: bool) -> (enc::CoderResult, usize, usize) {
         let decoder = self.decoder.as_mut().expect("transcode() should be called after decoder being detected.");
         if self.dst_encoding == enc::UTF_8 {
             let (result, num_decoder_read, num_decoder_written, _) = decoder.decode_to_utf8(src, dst, last);
             return (result, num_decoder_read, num_decoder_written);
-        // } else if self.dst_encoding == enc::UTF_16BE || self.dst_encoding == enc::UTF_16LE {
-        //     let (result, num_decoder_read, num_decoder_written, _) =
-        //         decoder.decode_to_utf16(src, dst as &mut [u16], last);
-        //     return (result, num_decoder_read, num_decoder_written);
+        } else if self.dst_encoding == enc::UTF_16BE || self.dst_encoding == enc::UTF_16LE {
+            let dst_u16 = &mut vec![0u16; dst.len()/2];
+            let (result, num_decoder_read, num_decoder_written, _) =
+                decoder.decode_to_utf16(src, dst_u16, last);
+            Transcoder::u16_to_u8(dst_u16, dst, num_decoder_written, self.dst_encoding == enc::UTF_16BE);
+            return (result, num_decoder_read, num_decoder_written);
         } else {
             let encoder = self.encoder.as_mut().unwrap();
             let (decoder_result, num_decoder_read, num_decoder_written, _) =
@@ -119,23 +121,28 @@ impl<'a> Transcoder {
         if auto_detection_failed {
             return Err("Auto-detection seems to fail.".into());
         }
-        // if false {
-        //     // utf16
-        // }
-        self.unencoded_bytes.append(&mut self.decode_buffer[..num_decoder_written].to_vec());
-        let encoder_input = unsafe {
-            str::from_utf8_unchecked(&self.unencoded_bytes)
-        };
-        let encoder = self.encoder.as_mut().unwrap();
-        let (encoder_result, num_encoder_read, num_encoder_written, _) =
-            encoder.encode_from_utf8(encoder_input, dst, eof);
-        self.unencoded_bytes = self.unencoded_bytes[num_encoder_read..].to_vec();
-        let coder_result = if decoder_result == enc::CoderResult::InputEmpty && encoder_result == enc::CoderResult::InputEmpty {
-            enc::CoderResult::InputEmpty
+        if self.dst_encoding == enc::UTF_16BE || self.dst_encoding == enc::UTF_16LE {
+            let dst_u16 = &mut vec![0u16; dst.len()/2];
+            let (result, num_decoder_read, num_decoder_written, _) =
+                decoder.decode_to_utf16(src, dst_u16, eof);
+            Transcoder::u16_to_u8(dst_u16, dst, num_decoder_written, self.dst_encoding == enc::UTF_16BE);
+            return Ok((result, num_decoder_read, num_decoder_written));
         } else {
-            enc::CoderResult::OutputFull
-        };
-        return Ok((coder_result, num_decoder_read, num_encoder_written));
+            self.unencoded_bytes.append(&mut self.decode_buffer[..num_decoder_written].to_vec());
+            let encoder_input = unsafe {
+                str::from_utf8_unchecked(&self.unencoded_bytes)
+            };
+            let encoder = self.encoder.as_mut().unwrap();
+            let (encoder_result, num_encoder_read, num_encoder_written, _) =
+                encoder.encode_from_utf8(encoder_input, dst, eof);
+            self.unencoded_bytes = self.unencoded_bytes[num_encoder_read..].to_vec();
+            let coder_result = if decoder_result == enc::CoderResult::InputEmpty && encoder_result == enc::CoderResult::InputEmpty {
+                enc::CoderResult::InputEmpty
+            } else {
+                enc::CoderResult::OutputFull
+            };
+            return Ok((coder_result, num_decoder_read, num_encoder_written));
+        }
     }
 
     pub fn src_encoding(self: &Self) -> Option<&'static enc::Encoding> {
@@ -144,6 +151,19 @@ impl<'a> Transcoder {
 
     pub fn dst_encoding(self: &Self) -> &'static enc::Encoding {
         return self.dst_encoding;
+    }
+
+    fn u16_to_u8(src: &[u16], dst: &mut [u8], num_bytes: usize, is_be: bool) {
+        let to_bytes = if is_be {
+            |src| u16::to_be_bytes(src)
+        } else {
+            |src| u16::to_le_bytes(src)
+        };
+        for i in 0..(num_bytes/2) {
+            let bytes = to_bytes(src[i]);
+            dst[i] = bytes[0];
+            dst[i+1] = bytes[0];
+        }
     }
 }
 
