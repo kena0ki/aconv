@@ -22,8 +22,8 @@ pub fn cli(opt: option::Opt) {
 
 pub fn controller(read: &mut impl io::Read, write: &mut impl io::Write, encoding: &'static enc::Encoding, opt: option::Opt) {
 
-    let input_buffer = &mut [0u8; 5 * (1 << 10)]; // 5K bytes
-    let output_buffer = &mut [0_u8; 10 * (1 << 10)]; // 10K bytes
+    let input_buffer = &mut [0u8; 5*1024]; // 5K bytes
+    let output_buffer = &mut [0u8; 10*1024]; // 10K bytes
 
     // guess the input encoding using up to a few Kbytes of byte sequences
     let (mut buf_guess, eof) = {
@@ -37,23 +37,25 @@ pub fn controller(read: &mut impl io::Read, write: &mut impl io::Write, encoding
     let num_non_aschii = 1000; // 1000 chars of non aschii
     let transcoder = &mut transcoder::Transcoder::new_with_buff_size(None, encoding, 10 * 1024).unwrap();
     let num_read = {
-        let rst = transcoder.guess_and_transcode(&mut buf_guess, output_buffer, eof, num_non_aschii).and_then(|x| {
-            if transcoder.src_encoding().unwrap() == transcoder.dst_encoding() {
-                Err("".into()) // TODO not error
-            } else {
-                Ok(x)
-            }
-        });
-        match rst {
+        let rslt = transcoder.guess_and_transcode(&mut buf_guess, output_buffer, eof, num_non_aschii);
+        match rslt {
             Ok((_, num_read, num_written)) => {
+                let trascode_needed = transcoder.src_encoding().unwrap() == transcoder.dst_encoding();
+                if ! trascode_needed {
+                    // write input to output as-is
+                    try_write(|| write.write_all(&buf_guess));
+                    try_write(|| io::copy(read, write).map(|_| ()));
+                    return;
+                }
                 // write transcoded bytes in buffer
                 try_write(|| write.write_all(&output_buffer[..num_written]));
                 num_read
             },
             Err(err) => {
-                if err != "" && !opt.quiet {
-                    eprintln!("Auto detection failed");
+                if ! opt.quiet {
+                    eprintln!("{}", err);
                 }
+                // write input to output as-is
                 try_write(|| write.write_all(&buf_guess));
                 try_write(|| io::copy(read, write).map(|_| ()));
                 return;
