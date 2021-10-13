@@ -49,3 +49,10 @@ script_runner = "@shell"
 script = "RUSTUP_TOOLCHAIN=nightly grcov . --binary-path ./target/debug -s . -t html --branch --ignore-not-existing -o ./target/debug/coverage/"
 dependencies = ["test-cov"]
 
+# Extends the setting in the built-in settings file:
+#  https://github.com/sagiegurari/cargo-make/blob/ee4e8b40319532079750d26c7d2415c0c6fbc306/src/lib/descriptor/makefiles/rust.toml#L411
+[tasks.test-debug]
+extend = "test"
+args = ["test", "--", "--nocapture"]
+env = { RUST_LOG="debug" }
+
