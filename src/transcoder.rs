@@ -43,7 +43,7 @@ impl<'a> Transcoder {
     pub fn transcode(self: &mut Self, src: &[u8], dst: &mut [u8], last: bool) -> (enc::CoderResult, usize, usize) {
         let decoder = self.decoder.as_mut().expect("transcode() should be called after decoder being detected.");
         if self.dst_encoding == enc::UTF_8 {
-            println!("no encode");
+            println!("no encoding");
             let (result, num_decoder_read, num_decoder_written, _) = decoder.decode_to_utf8(src, dst, last);
             return (result, num_decoder_read, num_decoder_written);
         } else if self.dst_encoding == enc::UTF_16BE || self.dst_encoding == enc::UTF_16LE {
@@ -73,64 +73,87 @@ impl<'a> Transcoder {
         }
     }
 
-    pub fn guess_and_transcode(self: &mut Self, src: &mut [u8], dst: & mut [u8], eof: bool, num_non_aschii: usize)
+    pub fn guess_and_transcode(self: &mut Self, src: &mut [u8], dst: & mut [u8], num_non_aschii: usize, non_text_limit: u8, eof: bool)
         -> Result<(enc::CoderResult, usize, usize), String> {
 
-        // BOM sniffing
-
-        // guess BOMless encodings
-        let num_read = src.len();
-        let mut aschii_cnt = 0;
-        let mut num_fed = 0;
-        let mut exhausted;
-        for b in src.iter() {
-            num_fed+=1;
-            exhausted = num_read == num_fed;
-            if self.detector.feed(&[*b], eof && exhausted) {
-                aschii_cnt+=1;
-                if aschii_cnt > num_non_aschii {
-                    break;
+        // guess the encoding and get a decoder
+        let mut decoder = match enc::Encoding::for_bom(src) { // BOM sniffing
+            Some(found_bom) => {
+                let (encoding,_) = found_bom;
+                encoding.new_decoder()
+            },
+            None => { // guess BOMless encodings
+                let num_read = src.len();
+                let mut non_aschii_cnt = 0;
+                let mut num_fed = 0;
+                let mut exhausted;
+                for b in src.iter() {
+                    num_fed+=1;
+                    exhausted = num_read == num_fed;
+                    if self.detector.feed(&[*b], eof && exhausted) {
+                        non_aschii_cnt+=1;
+                        if non_aschii_cnt > num_non_aschii {
+                            break;
+                        }
+                    }
                 }
-            }
-        }
-        let top_level_domain = None;
-        let allow_utf8 = true;
-        let mut decoder = self.detector.guess(top_level_domain, allow_utf8).new_decoder();
+                println!("non aschii count: {:?}", non_aschii_cnt);
+                println!("number of fed bytes: {:?}", num_fed);
+                let top_level_domain = None;
+                let allow_utf8 = true;
+                self.detector.guess(top_level_domain, allow_utf8).new_decoder()
+            },
+        };
+        println!("guessed decoder: {:?}", decoder.encoding());
         let (coder_result, decoder_read, decoder_written)
-            = Transcoder::try_transcode(self, &mut decoder, num_fed, eof, src, dst)?;
+            = Transcoder::try_transcode(self, &mut decoder, eof, src, dst, non_text_limit)?;
+        self.src_encoding = Some(decoder.encoding());
         self.decoder = Some(decoder);
         return Ok((coder_result, decoder_read, decoder_written));
     }
 
 
-    fn try_transcode(self: &mut Self, decoder: &mut enc::Decoder, num_fed: usize, eof: bool, src: &[u8], dst: & mut [u8])
+    fn try_transcode(self: &mut Self, decoder: &mut enc::Decoder, eof: bool, src: &[u8], dst: &mut [u8], non_text_limit: u8)
         -> Result<(enc::CoderResult, usize, usize), String> {
-        let (decoder_result, num_decoder_read, num_decoder_written, _) = decoder.decode_to_utf8(&src[..num_fed], &mut self.decode_buffer, eof);
+        let decode_buffer = if self.dst_encoding == enc::UTF_8 {
+            &mut (*dst)
+        } else {
+            &mut self.decode_buffer
+        };
+        let (decoder_result, num_decoder_read, num_decoder_written, _) = decoder.decode_to_utf8(src, decode_buffer, eof);
         let decode_buffer_str = unsafe{
-            str::from_utf8_unchecked_mut(&mut self.decode_buffer[..num_decoder_written])
+            str::from_utf8_unchecked_mut(&mut decode_buffer[..num_decoder_written])
         };
         let mut non_text_cnt = 0;
-        for s in decode_buffer_str.chars() {
-            if let Ok(_) = constants::NON_TEXTS_FREQUENT.binary_search(&s) {
+        for c in decode_buffer_str.chars() {
+            if let Ok(_) = constants::NON_TEXTS_FREQUENT.binary_search(&c) {
+                println!("non text: {:?}", c);
                 non_text_cnt+=1;
                 continue;
             }
-            if let Ok(_) = constants::NON_TEXTS.binary_search(&s) {
+            if let Ok(_) = constants::NON_TEXTS.binary_search(&c) {
+                println!("non text: {:?}", c);
                 non_text_cnt+=1;
             }
         }
-        let auto_detection_failed = 1 < (non_text_cnt / decode_buffer_str.chars().count() );
+        let auto_detection_failed = (non_text_limit as usize) < (non_text_cnt * 100 / decode_buffer_str.chars().count() );
         if auto_detection_failed {
             return Err("Auto-detection seems to fail.".into());
         }
+        if self.dst_encoding == enc::UTF_8 {
+            return Ok((decoder_result, num_decoder_read, num_decoder_written));
+        }
         if self.dst_encoding == enc::UTF_16BE || self.dst_encoding == enc::UTF_16LE {
+            println!("decode_to_utf16");
+            self.decoder = Some(decoder.encoding().new_decoder()); // the decoder was used once to check the guess result, so we need a new one.
+            let new_decoder = self.decoder.as_mut().unwrap();
             let dst_u16 = &mut vec![0u16; dst.len()/2];
             let (result, num_decoder_read, num_decoder_written, _) =
-                decoder.decode_to_utf16(src, dst_u16, eof);
+                new_decoder.decode_to_utf16(src, dst_u16, eof);
             Transcoder::u16_to_u8(dst_u16, dst, num_decoder_written, self.dst_encoding == enc::UTF_16BE);
             return Ok((result, num_decoder_read, num_decoder_written*2));
         } else {
-            self.unencoded_bytes.append(&mut self.decode_buffer[..num_decoder_written].to_vec());
+            self.unencoded_bytes.append(&mut decode_buffer[..num_decoder_written].to_vec());
             let encoder_input = unsafe {
                 str::from_utf8_unchecked(&self.unencoded_bytes)
             };
@@ -174,7 +197,75 @@ impl<'a> Transcoder {
 
 #[cfg(test)]
 mod tests {
-    macro_rules! test_trans_simple {
+    use std::io::Read;
+    use std::path;
+
+    macro_rules! test_guess {
+        ($name:ident, $input_file:expr, $expected_file:expr, $enc:expr) => {
+            #[test]
+            fn $name() {
+                let test_data = path::Path::new("test_data");
+                let ifile_handle = &mut std::fs::File::open(test_data.join($input_file)).unwrap();
+                let input_bytes = &mut [0u8; 500];
+                ifile_handle.read(input_bytes).unwrap();
+                let enc = super::enc::Encoding::for_label($enc.as_bytes());
+                let t = &mut super::Transcoder::new(None, enc.unwrap());
+                let output_bytes = &mut [0u8; 5*1024];
+                // println!("{:x?}", &input_bytes[..15]);
+                match t.guess_and_transcode(input_bytes, output_bytes, 100, 5, false) {
+                    Ok((_, _, num_written)) => {
+                        let test_data = path::Path::new("test_data");
+                        let efile_handle = &mut std::fs::File::open(test_data.join($expected_file)).unwrap();
+                        let expected_string = &mut Vec::new();
+                        efile_handle.read_to_end(expected_string).unwrap();
+                        assert_eq!(&expected_string[..num_written], &output_bytes[..num_written]);
+                    },
+                    Err(err) => panic!("{:?}",err),
+                }
+            }
+        };
+    }
+
+    test_guess!(test_guess_utf16le_utf8     , "utf16le_BOM_th.txt"  , "utf8_th.txt"     , "utf8");
+    test_guess!(test_guess_utf16be_utf8     , "utf16be_BOM_th.txt"  , "utf8_th.txt"     , "utf8");
+    test_guess!(test_guess_sjis_utf8        , "sjis_ja.txt"         , "utf8_ja.txt"     , "utf8");
+    test_guess!(test_guess_eucjp_utf8       , "euc-jp_ja.txt"       , "utf8_ja.txt"     , "utf8");
+    test_guess!(test_guess_iso2022jp_utf8   , "iso-2022-jp_ja.txt"  , "utf8_ja.txt"     , "utf8");
+    test_guess!(test_guess_big5_utf8        , "big5_zh_CHT.txt"     , "utf8_zh_CHT.txt" , "utf8");
+    test_guess!(test_guess_gbk_utf8         , "gbk_zh_CHS.txt"      , "utf8_zh_CHS.txt" , "utf8");
+    test_guess!(test_guess_gb18030_utf8     , "gb18030_zh_CHS.txt"  , "utf8_zh_CHS.txt" , "utf8");
+    test_guess!(test_guess_euckr_utf8       , "euc-kr_ko.txt"       , "utf8_ko.txt"     , "utf8");
+    test_guess!(test_guess_koi8r_utf8       , "koi8-r_ru.txt"       , "utf8_ru.txt"     , "utf8");
+    test_guess!(test_guess_windows1252_utf8 , "windows-1252_es.txt" , "utf8_es.txt"     , "utf8");
+
+    test_guess!(test_guess_utf8_utf16le     , "utf8_th.txt"     , "utf16le_th.txt"      , "utf-16le"    );
+    test_guess!(test_guess_utf8_utf16be     , "utf8_th.txt"     , "utf16be_th.txt"      , "utf-16be"    );
+    test_guess!(test_guess_utf8_sjis        , "utf8_ja.txt"     , "sjis_ja.txt"         , "sjis"        );
+    test_guess!(test_guess_utf8_eucjp       , "utf8_ja.txt"     , "euc-jp_ja.txt"       , "euc-jp"      );
+    test_guess!(test_guess_utf8_iso2022jp   , "utf8_ja.txt"     , "iso-2022-jp_ja.txt"  , "iso-2022-jp" );
+    test_guess!(test_guess_utf8_big5        , "utf8_zh_CHT.txt" , "big5_zh_CHT.txt"     , "big5"        );
+    test_guess!(test_guess_utf8_gbk         , "utf8_zh_CHS.txt" , "gbk_zh_CHS.txt"      , "gbk          ");
+    test_guess!(test_guess_utf8_gb18030     , "utf8_zh_CHS.txt" , "gb18030_zh_CHS.txt"  , "gb18030      ");
+    test_guess!(test_guess_utf8_euckr       , "utf8_ko.txt"     , "euc-kr_ko.txt"       , "euc-kr       ");
+    test_guess!(test_guess_utf8_koi8r       , "utf8_ru.txt"     , "koi8-r_ru.txt"       , "koi8-r       ");
+    test_guess!(test_guess_utf8_windows1252 , "utf8_es.txt"     , "windows-1252_es.txt" , "windows-1252 ");
+
+    #[test]
+    fn test_guess() {
+        let file_handle = &mut std::fs::File::open("src/test_data/demo.gif").unwrap();
+        let string = &mut Vec::new();
+        file_handle.read_to_end(string).unwrap();
+        let enc = super::enc::Encoding::for_label("utf-8".as_bytes());
+        let t = &mut super::Transcoder::new(None, enc.unwrap());
+        let output = &mut [0u8; 5*1024];
+        match t.guess_and_transcode(string, output, 100, 0, true) {
+            // Ok(ok) => panic!("{:?}", ok),
+            Ok(_) => (),
+            Err(_) => (),
+        }
+    }
+
+    macro_rules! transcode_test {
         ($name:ident, $dec:expr, $enc:expr, $srcbytes:expr, $dst:expr) => {
             #[test]
             fn $name() {
@@ -183,8 +274,8 @@ mod tests {
                 let enc = super::enc::Encoding::for_label($enc.as_bytes());
                 println!("encoder: {:?}", enc.unwrap());
                 let mut t = super::Transcoder::new(dec, enc.unwrap());
-                let output = &mut [0u8; 14]; // encoder seems to need at least 14 bytes
-                let (_,_,written) = t.transcode($srcbytes, output, true);
+                let output = &mut [0u8; 140]; // encoder seems to need at least 14 bytes
+                let (_,_,written) = t.transcode($srcbytes, output, false);
                 println!("written: {}",written);
                 assert_eq!($dst, &output[..written]);
             }
@@ -192,25 +283,27 @@ mod tests {
     }
 
     // This isn't exhaustive obviously, but it lets us test base level support.
-    test_trans_simple!(trans_same_utf8       ,        "utf-8"   ,          "utf-8" , b"\xD0\x96" , b"\xD0\x96"); // Ж
-    test_trans_simple!(trans_same_utf16le    ,     "utf-16le"   ,       "utf-16le" , b"\x16\x04" , b"\x16\x04"); // Ж
-    test_trans_simple!(trans_same_utf16be    ,     "utf-16be"   ,       "utf-16be" , b"\x04\x16" , b"\x04\x16"); // Ж
-    test_trans_simple!(trans_same_chinese    ,     "chinese"    ,        "chinese" , b"\xA7\xA8" , b"\xA7\xA8"); // Ж
-    test_trans_simple!(trans_same_korean     ,      "korean"    ,         "korean" , b"\xAC\xA8" , b"\xAC\xA8"); // Ж
-    test_trans_simple!(trans_same_big5_hkscs ,  "big5-hkscs"    ,     "big5-hkscs" , b"\xC7\xFA" , b"\xC7\xFA"); // Ж
-    test_trans_simple!(trans_same_gbk        ,         "gbk"    ,            "gbk" , b"\xA7\xA8" , b"\xA7\xA8"); // Ж
-    test_trans_simple!(trans_same_sjis       ,        "sjis"    ,           "sjis" , b"\x84\x47" , b"\x84\x47"); // Ж
-    test_trans_simple!(trans_same_eucjp      ,       "euc-jp"   ,         "euc-jp" , b"\xA7\xA8" , b"\xA7\xA8"); // Ж
-    test_trans_simple!(trans_same_latin1     ,      "latin1"    ,         "latin1" , b"\xA9"     , b"\xA9"    ); // ©
+    transcode_test!(trans_same_utf8       ,        "utf-8" ,          "utf-8" , b"\xD0\x96" , b"\xD0\x96"); // Ж
+    transcode_test!(trans_same_utf16le    ,     "utf-16le" ,       "utf-16le" , b"\x16\x04" , b"\x16\x04"); // Ж
+    transcode_test!(trans_same_utf16be    ,     "utf-16be" ,       "utf-16be" , b"\x04\x16" , b"\x04\x16"); // Ж
+    transcode_test!(trans_same_chinese    ,     "chinese"  ,        "chinese" , b"\xA7\xA8" , b"\xA7\xA8"); // Ж
+    transcode_test!(trans_same_korean     ,      "korean"  ,         "korean" , b"\xAC\xA8" , b"\xAC\xA8"); // Ж
+    transcode_test!(trans_same_big5_hkscs ,  "big5-hkscs"  ,     "big5-hkscs" , b"\xC7\xFA" , b"\xC7\xFA"); // Ж
+    transcode_test!(trans_same_gbk        ,         "gbk"  ,            "gbk" , b"\xA7\xA8" , b"\xA7\xA8"); // Ж
+    transcode_test!(trans_same_sjis       ,        "sjis"  ,           "sjis" , b"\x84\x47" , b"\x84\x47"); // Ж
+    transcode_test!(trans_same_eucjp      ,       "euc-jp" ,         "euc-jp" , b"\xA7\xA8" , b"\xA7\xA8"); // Ж
+    transcode_test!(trans_same_latin1     ,      "latin1"  ,         "latin1" , b"\xA9"     , b"\xA9"    ); // ©
 
-    test_trans_simple!(trans_diff_utf8_utf16le       ,        "utf-8"   ,       "utf-16le" , b"\xD0\x96"     , b"\x16\x04"); // Ж
-    test_trans_simple!(trans_diff_utf16le_utf16be    ,     "utf-16le"   ,       "utf-16be" , b"\x16\x04"     , b"\x04\x16"); // Ж
-    test_trans_simple!(trans_diff_utf16be_chinese    ,     "utf-16be"   ,        "chinese" , b"\x04\x16"     , b"\xA7\xA8"); // Ж
-    test_trans_simple!(trans_diff_chinese_korean     ,     "chinese"    ,         "korean" , b"\xA7\xA8"     , b"\xAC\xA8"); // Ж
-    test_trans_simple!(trans_diff_korean_big5_hkscs  ,      "korean"    ,     "big5-hkscs" , b"\xAC\xA8"     , b"\xC7\xFA"); // Ж
-    test_trans_simple!(trans_diff_big5_hkscs_gbk     ,  "big5-hkscs"    ,            "gbk" , b"\xC7\xFA"     , b"\xA7\xA8"); // Ж
-    test_trans_simple!(trans_diff_gbk_sjis           ,         "gbk"    ,           "sjis" , b"\xA7\xA8"     , b"\x84\x47"); // Ж
-    test_trans_simple!(trans_diff_sjis_eucjp         ,        "sjis"    ,         "euc-jp" , b"\x84\x47"     , b"\xA7\xA8"); // Ж
-    test_trans_simple!(trans_diff_eucjp_latin1       ,       "euc-jp"   ,         "latin1" , b"\x8F\xA2\xED" , b"\xA9"    ); // ©
-    test_trans_simple!(trans_diff_latin1_utf8        ,      "latin1"    ,          "utf-8" , b"\xA9"         , b"\xC2\xA9"); // ©
+    transcode_test!(trans_diff_utf8_utf16le       ,        "utf-8" ,       "utf-16le" , b"\xD0\x96"     , b"\x16\x04"); // Ж
+    transcode_test!(trans_diff_utf16le_utf16be    ,     "utf-16le" ,       "utf-16be" , b"\x16\x04"     , b"\x04\x16"); // Ж
+    transcode_test!(trans_diff_utf16be_chinese    ,     "utf-16be" ,        "chinese" , b"\x04\x16"     , b"\xA7\xA8"); // Ж
+    transcode_test!(trans_diff_chinese_korean     ,     "chinese"  ,         "korean" , b"\xA7\xA8"     , b"\xAC\xA8"); // Ж
+    transcode_test!(trans_diff_korean_big5_hkscs  ,      "korean"  ,     "big5-hkscs" , b"\xAC\xA8"     , b"\xC7\xFA"); // Ж
+    transcode_test!(trans_diff_big5_hkscs_gbk     ,  "big5-hkscs"  ,            "gbk" , b"\xC7\xFA"     , b"\xA7\xA8"); // Ж
+    transcode_test!(trans_diff_gbk_sjis           ,         "gbk"  ,           "sjis" , b"\xA7\xA8"     , b"\x84\x47"); // Ж
+    transcode_test!(trans_diff_sjis_eucjp         ,        "sjis"  ,         "euc-jp" , b"\x84\x47"     , b"\xA7\xA8"); // Ж
+    transcode_test!(trans_diff_eucjp_latin1       ,       "euc-jp" ,         "latin1" , b"\x8F\xA2\xED" , b"\xA9"    ); // ©
+    transcode_test!(trans_diff_latin1_utf8        ,      "latin1"  ,          "utf-8" , b"\xA9"         , b"\xC2\xA9"); // ©
+
+    transcode_test!(trans_diff_utf8_utf16be2       ,        "utf-8" ,       "utf-16be" , "地球とは人".as_bytes()     , b"\x57\x30\x74\x03\x30\x68\x30\x6F\x4E\xBA");
 }

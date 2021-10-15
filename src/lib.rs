@@ -37,7 +37,7 @@ pub fn controller(read: &mut impl io::Read, write: &mut impl io::Write, encoding
     let num_non_aschii = 1000; // 1000 chars of non aschii
     let transcoder = &mut transcoder::Transcoder::new_with_buff_size(None, encoding, 10 * 1024).unwrap();
     let num_read = {
-        let rslt = transcoder.guess_and_transcode(&mut buf_guess, output_buffer, eof, num_non_aschii);
+        let rslt = transcoder.guess_and_transcode(&mut buf_guess, output_buffer, num_non_aschii, 10, eof);
         match rslt {
             Ok((_, num_read, num_written)) => {
                 let trascode_needed = transcoder.src_encoding().unwrap() == transcoder.dst_encoding();
