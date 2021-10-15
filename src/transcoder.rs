@@ -73,7 +73,7 @@ impl<'a> Transcoder {
         }
     }
 
-    pub fn guess_and_transcode(self: &mut Self, src: &mut [u8], dst: & mut [u8], num_non_aschii: usize, non_text_limit: u8, eof: bool)
+    pub fn guess_and_transcode(self: &mut Self, src: &mut [u8], dst: & mut [u8], num_non_textual_aschii: usize, non_text_limit: u8, eof: bool)
         -> Result<(enc::CoderResult, usize, usize), String> {
 
         // guess the encoding and get a decoder
@@ -90,9 +90,11 @@ impl<'a> Transcoder {
                 for b in src.iter() {
                     num_fed+=1;
                     exhausted = num_read == num_fed;
-                    if self.detector.feed(&[*b], eof && exhausted) {
+                    let is_non_aschii = self.detector.feed(&[*b], eof && exhausted);
+                    let is_non_text = Transcoder::is_non_text(&(*b as char));
+                    if is_non_aschii || is_non_text {
                         non_aschii_cnt+=1;
-                        if non_aschii_cnt > num_non_aschii {
+                        if non_aschii_cnt > num_non_textual_aschii {
                             break;
                         }
                     }
@@ -126,12 +128,7 @@ impl<'a> Transcoder {
         };
         let mut non_text_cnt = 0;
         for c in decode_buffer_str.chars() {
-            if let Ok(_) = constants::NON_TEXTS_FREQUENT.binary_search(&c) {
-                println!("non text: {:?}", c);
-                non_text_cnt+=1;
-                continue;
-            }
-            if let Ok(_) = constants::NON_TEXTS.binary_search(&c) {
+            if Transcoder::is_non_text(&c) {
                 println!("non text: {:?}", c);
                 non_text_cnt+=1;
             }
@@ -168,6 +165,17 @@ impl<'a> Transcoder {
             };
             return Ok((coder_result, num_decoder_read, num_encoder_written));
         }
+    }
+
+
+    pub fn is_non_text(c: &char) -> bool {
+        if let Ok(_) = constants::NON_TEXTS_FREQUENT.binary_search(&c) {
+            return true;
+        }
+        if let Ok(_) = constants::NON_TEXTS.binary_search(&c) {
+            return true;
+        }
+        return false;
     }
 
     pub fn src_encoding(self: &Self) -> Option<&'static enc::Encoding> {
@@ -210,7 +218,7 @@ mod tests {
                 ifile_handle.read(input_bytes).unwrap();
                 let enc = super::enc::Encoding::for_label($enc.as_bytes());
                 let t = &mut super::Transcoder::new(None, enc.unwrap());
-                let output_bytes = &mut [0u8; 5*1024];
+                let output_bytes = &mut [0u8; 1024];
                 // println!("{:x?}", &input_bytes[..15]);
                 match t.guess_and_transcode(input_bytes, output_bytes, 100, 5, false) {
                     Ok((_, _, num_written)) => {
@@ -238,29 +246,28 @@ mod tests {
     test_guess!(test_guess_koi8r_utf8       , "koi8-r_ru.txt"       , "utf8_ru.txt"     , "utf8");
     test_guess!(test_guess_windows1252_utf8 , "windows-1252_es.txt" , "utf8_es.txt"     , "utf8");
 
-    test_guess!(test_guess_utf8_utf16le     , "utf8_th.txt"     , "utf16le_th.txt"      , "utf-16le"    );
-    test_guess!(test_guess_utf8_utf16be     , "utf8_th.txt"     , "utf16be_th.txt"      , "utf-16be"    );
-    test_guess!(test_guess_utf8_sjis        , "utf8_ja.txt"     , "sjis_ja.txt"         , "sjis"        );
-    test_guess!(test_guess_utf8_eucjp       , "utf8_ja.txt"     , "euc-jp_ja.txt"       , "euc-jp"      );
-    test_guess!(test_guess_utf8_iso2022jp   , "utf8_ja.txt"     , "iso-2022-jp_ja.txt"  , "iso-2022-jp" );
-    test_guess!(test_guess_utf8_big5        , "utf8_zh_CHT.txt" , "big5_zh_CHT.txt"     , "big5"        );
-    test_guess!(test_guess_utf8_gbk         , "utf8_zh_CHS.txt" , "gbk_zh_CHS.txt"      , "gbk          ");
-    test_guess!(test_guess_utf8_gb18030     , "utf8_zh_CHS.txt" , "gb18030_zh_CHS.txt"  , "gb18030      ");
-    test_guess!(test_guess_utf8_euckr       , "utf8_ko.txt"     , "euc-kr_ko.txt"       , "euc-kr       ");
-    test_guess!(test_guess_utf8_koi8r       , "utf8_ru.txt"     , "koi8-r_ru.txt"       , "koi8-r       ");
-    test_guess!(test_guess_utf8_windows1252 , "utf8_es.txt"     , "windows-1252_es.txt" , "windows-1252 ");
+    test_guess!(test_guess_utf8_utf16le     , "utf8_th.txt"     , "utf16le_th.txt"      , "utf-16le"     );
+    test_guess!(test_guess_utf8_utf16be     , "utf8_th.txt"     , "utf16be_th.txt"      , "utf-16be"     );
+    test_guess!(test_guess_utf8_sjis        , "utf8_ja.txt"     , "sjis_ja.txt"         , "sjis"         );
+    test_guess!(test_guess_utf8_eucjp       , "utf8_ja.txt"     , "euc-jp_ja.txt"       , "euc-jp"       );
+    test_guess!(test_guess_utf8_iso2022jp   , "utf8_ja.txt"     , "iso-2022-jp_ja.txt"  , "iso-2022-jp"  );
+    test_guess!(test_guess_utf8_big5        , "utf8_zh_CHT.txt" , "big5_zh_CHT.txt"     , "big5"         );
+    test_guess!(test_guess_utf8_gbk         , "utf8_zh_CHS.txt" , "gbk_zh_CHS.txt"      , "gbk"          );
+    test_guess!(test_guess_utf8_gb18030     , "utf8_zh_CHS.txt" , "gb18030_zh_CHS.txt"  , "gb18030"      );
+    test_guess!(test_guess_utf8_euckr       , "utf8_ko.txt"     , "euc-kr_ko.txt"       , "euc-kr"       );
+    test_guess!(test_guess_utf8_koi8r       , "utf8_ru.txt"     , "koi8-r_ru.txt"       , "koi8-r"       );
+    test_guess!(test_guess_utf8_windows1252 , "utf8_es.txt"     , "windows-1252_es.txt" , "windows-1252" );
 
     #[test]
-    fn test_guess() {
-        let file_handle = &mut std::fs::File::open("src/test_data/demo.gif").unwrap();
-        let string = &mut Vec::new();
-        file_handle.read_to_end(string).unwrap();
+    fn test_guess_error() {
+        let file_handle = &mut std::fs::File::open("test_data/binary.jpeg").unwrap();
+        let input = &mut [0u8; 500];
+        file_handle.read(input).unwrap();
         let enc = super::enc::Encoding::for_label("utf-8".as_bytes());
         let t = &mut super::Transcoder::new(None, enc.unwrap());
-        let output = &mut [0u8; 5*1024];
-        match t.guess_and_transcode(string, output, 100, 0, true) {
-            // Ok(ok) => panic!("{:?}", ok),
-            Ok(_) => (),
+        let output = &mut [0u8; 1024];
+        match t.guess_and_transcode(input, output, 100, 0, false) {
+            Ok(ok) => panic!("{:?}", ok),
             Err(_) => (),
         }
     }
@@ -274,7 +281,7 @@ mod tests {
                 let enc = super::enc::Encoding::for_label($enc.as_bytes());
                 println!("encoder: {:?}", enc.unwrap());
                 let mut t = super::Transcoder::new(dec, enc.unwrap());
-                let output = &mut [0u8; 140]; // encoder seems to need at least 14 bytes
+                let output = &mut [0u8; 14]; // encoder seems to need at least 14 bytes
                 let (_,_,written) = t.transcode($srcbytes, output, false);
                 println!("written: {}",written);
                 assert_eq!($dst, &output[..written]);
@@ -304,6 +311,4 @@ mod tests {
     transcode_test!(trans_diff_sjis_eucjp         ,        "sjis"  ,         "euc-jp" , b"\x84\x47"     , b"\xA7\xA8"); // Ж
     transcode_test!(trans_diff_eucjp_latin1       ,       "euc-jp" ,         "latin1" , b"\x8F\xA2\xED" , b"\xA9"    ); // ©
     transcode_test!(trans_diff_latin1_utf8        ,      "latin1"  ,          "utf-8" , b"\xA9"         , b"\xC2\xA9"); // ©
-
-    transcode_test!(trans_diff_utf8_utf16be2       ,        "utf-8" ,       "utf-16be" , "地球とは人".as_bytes()     , b"\x57\x30\x74\x03\x30\x68\x30\x6F\x4E\xBA");
 }
