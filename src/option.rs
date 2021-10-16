@@ -14,7 +14,7 @@ pub struct Opt {
 
     /// The encoding of the output.
     #[structopt(name = "ENCODING", short = "t", long = "to-code", default_value = "UTF-8")]
-    pub to: String,
+    pub to_code: String,
 
     /// Output directory.
     /// If input arguments contain directories, the directory hierarchies are preserved under DIRECTORY.
@@ -31,6 +31,12 @@ pub struct Opt {
     #[structopt(name = "PERCENTAGE", short = "n", long = "non-text-threshold", default_value = "0")]
     pub non_text_threshold: u8,
 
+    /// Number of non-textual ascii characters to guess the encoding.
+    /// Around 100 characters are good enough for most cases, but if guess accuracy is not good, increasing the value
+    /// might help.
+    #[structopt(name = "NUMBER", short = "n", long = "chars-to-guess", default_value = "100")]
+    pub chars_to_guess: usize,
+
     /// Prints only auto-detected encodings without decoded texts.
     #[structopt(short, long)]
     pub encoding: bool,
@@ -43,4 +49,43 @@ pub struct Opt {
     #[structopt(name = "FILE", parse(from_os_str))]
     pub paths: Vec<PathBuf>,
 }
+
+impl Opt {
+    pub fn version_mut(self: &mut Self) -> &mut bool {
+        return &mut self.version;
+    }
+
+    pub fn to_code_mut(self: &mut Self) -> &mut String {
+        return &mut self.to_code;
+    }
+
+    pub fn output_mut(self: &mut Self) -> &mut Option<PathBuf> {
+        return &mut self.output;
+    }
+
+    pub fn list_mut(self: &mut Self) -> &mut bool {
+        return &mut self.list;
+    }
+
+    pub fn non_text_threshold_mut(self: &mut Self) -> &mut u8 {
+        return &mut self.non_text_threshold;
+    }
+
+    pub fn chars_to_guess_mut(self: &mut Self) -> &mut usize {
+        return &mut self.chars_to_guess;
+    }
+
+    pub fn encoding_mut(self: &mut Self) -> &mut bool {
+        return &mut self.encoding;
+    }
+
+    pub fn quiet_mut(self: &mut Self) -> &mut bool {
+        return &mut self.quiet;
+    }
+
+    pub fn paths_mut(self: &mut Self) -> &mut Vec<PathBuf> {
+        return &mut self.paths;
+    }
+}
+
 
