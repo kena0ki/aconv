@@ -12,6 +12,10 @@ iconv -t euc-kr        utf8_ko.txt     > euc-kr_ko.txt
 iconv -t koi8-r        utf8_ru.txt     > koi8-r_ru.txt
 iconv -t windows-1252  utf8_es.txt     > windows-1252_es.txt
 
-echo -en "\xFE\xFF" > utf16be_ja.txt && iconv -t utf-16be      utf8_ja.txt     >> utf16be_ja.txt
-iconv -t utf-16be      utf8_ja.txt     > utf16be_ja.txt
+# MEMO
+# encoding_rs does not seem to handle simbols in sjis properly
+# e.g.
+#  '〜'(\x81\x60) in SJIS is mapped to \xEF\xBD\x9E in UTF8, although expected to \xE3\x80\x9C in UTF8
+#  '−'(\x81\x7c) in SJIS is mapped to \xEF\xBC\x8D in UTF8, although expected to \xE2\x88\x92 in UTF8
+# So I exclude the simbols from utf8_ja.txt in the mean time encoding_rs is fixed.
 
