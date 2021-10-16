@@ -73,7 +73,7 @@ impl<'a> Transcoder {
         }
     }
 
-    pub fn guess_and_transcode(self: &mut Self, src: &mut [u8], dst: & mut [u8], num_non_textual_aschii: usize, non_text_limit: u8, eof: bool)
+    pub fn guess_and_transcode(self: &mut Self, src: &mut [u8], dst: & mut [u8], num_non_textual_ascii: usize, non_text_limit: u8, eof: bool)
         -> Result<(enc::CoderResult, usize, usize), String> {
 
         // guess the encoding and get a decoder
@@ -84,22 +84,22 @@ impl<'a> Transcoder {
             },
             None => { // guess BOMless encodings
                 let num_read = src.len();
-                let mut non_aschii_cnt = 0;
+                let mut non_ascii_cnt = 0;
                 let mut num_fed = 0;
                 let mut exhausted;
                 for b in src.iter() {
                     num_fed+=1;
                     exhausted = num_read == num_fed;
-                    let is_non_aschii = self.detector.feed(&[*b], eof && exhausted);
+                    let is_non_ascii = self.detector.feed(&[*b], eof && exhausted);
                     let is_non_text = Transcoder::is_non_text(&(*b as char));
-                    if is_non_aschii || is_non_text {
-                        non_aschii_cnt+=1;
-                        if non_aschii_cnt > num_non_textual_aschii {
+                    if is_non_ascii || is_non_text {
+                        non_ascii_cnt+=1;
+                        if non_ascii_cnt > num_non_textual_ascii {
                             break;
                         }
                     }
                 }
-                println!("non aschii count: {:?}", non_aschii_cnt);
+                println!("non ascii count: {:?}", non_ascii_cnt);
                 println!("number of fed bytes: {:?}", num_fed);
                 let top_level_domain = None;
                 let allow_utf8 = true;
