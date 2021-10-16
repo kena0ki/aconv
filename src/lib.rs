@@ -5,26 +5,58 @@ pub mod transcoder;
 use encoding_rs as enc;
 use std::io;
 use std::fs;
+use std::path;
 use std::str;
 use std::process;
 
-pub fn cli(opt: option::Opt) {
-    // check
-    let mut file = match opt.paths.iter().next() {
-        Some(path) => fs::File::open(path).unwrap(),
-        None => return,
-    };
+// enum Error {
+//     io::Error,
+//     String,
+// }
 
-    let mut stdout = std::io::stdout();
-    let to_code = enc::Encoding::for_label(opt.to.as_bytes()).expect("Unsupported encoding.");
-
+pub fn cli(opt: &mut option::Opt) -> Result<(),io::Error> {
     let input_buffer = &mut [0u8; 5*1024]; // 5K bytes
     let output_buffer = &mut [0u8; 10*1024]; // 10K bytes
-    transcode(&mut file, &mut stdout, to_code, input_buffer, output_buffer, opt);
+    let to_code = match enc::Encoding::for_label(opt.to_code.as_bytes()) {
+        None => return Err(io::Error::new(io::ErrorKind::Other,format!("Invalid encoding: {}", opt.to_code))),
+        Some(e) => e,
+    };
+
+    if opt.paths.len() == 0 {
+        opt.paths_mut()[0] = path::PathBuf::new();
+        opt.paths_mut()[0].set_file_name("-");
+    }
+    for i in 0..opt.paths.len() {
+        let path = &opt.paths[i];
+        if path.to_string_lossy() != "-" {
+            if ! path::Path::exists(&opt.paths[i]) {
+                return Err(io::Error::new(io::ErrorKind::NotFound,
+                    format!("No such file or directory: {}", path.to_string_lossy())));
+            }
+        }
+    }
+    let stdin = std::io::stdin();
+    for i in 0..opt.paths.len() {
+        let path = &opt.paths[i];
+        let mut file;
+        let mut lock;
+        let ifile: &mut dyn io::Read;
+        ifile = if path.to_string_lossy() != "-" {
+            file = fs::File::open(path)?;
+            &mut file
+        } else {
+            lock = stdin.lock();
+            &mut lock
+        };
+        let mut stdout = std::io::stdout();
+        transcode(ifile, &mut stdout, to_code, input_buffer, output_buffer, &opt);
+    };
+
+    return Ok(());
 }
 
-pub fn transcode(read: &mut impl io::Read, write: &mut impl io::Write, encoding: &'static enc::Encoding,
-    input_buffer: &mut [u8], output_buffer: &mut [u8], opt: option::Opt)
+pub fn transcode(read: &mut dyn io::Read, write: &mut impl io::Write, encoding: &'static enc::Encoding,
+    input_buffer: &mut [u8], output_buffer: &mut [u8], opt: &option::Opt)
     -> Option<&'static enc::Encoding> {
 
     // guess the input encoding using up to a few Kbytes of byte sequences
@@ -36,10 +68,9 @@ pub fn transcode(read: &mut impl io::Read, write: &mut impl io::Write, encoding:
         let eof = second_size == 0;
         (buf_guess, eof)
     };
-    let num_non_ascii = 1000; // 1000 chars of non ascii
     let transcoder = &mut transcoder::Transcoder::new_with_buff_size(None, encoding, 10 * 1024).unwrap();
     let num_read = {
-        let rslt = transcoder.guess_and_transcode(&mut buf_guess, output_buffer, num_non_ascii, 10, eof);
+        let rslt = transcoder.guess_and_transcode(&mut buf_guess, output_buffer, opt.chars_to_guess, opt.non_text_threshold, eof);
         match rslt {
             Ok((_, num_read, num_written)) => {
                 let should_not_transcode = transcoder.src_encoding().unwrap() == transcoder.dst_encoding();
@@ -80,7 +111,7 @@ pub fn transcode(read: &mut impl io::Read, write: &mut impl io::Write, encoding:
     return transcoder.src_encoding();
 }
 
-fn transcode_file_and_write(read: &mut impl io::Read,write: &mut impl io::Write, transcoder: &mut transcoder::Transcoder,
+fn transcode_file_and_write(read: &mut dyn io::Read,write: &mut impl io::Write, transcoder: &mut transcoder::Transcoder,
     input_buffer: &mut [u8], output_buffer: &mut [u8]) {
     loop {
         match read.read(input_buffer) {
@@ -135,7 +166,8 @@ mod tests {
         ($name:ident, $input_file:expr, $expected_file:expr, $enc:expr) => {
             #[test]
             fn $name() {
-                let opt = super::option::Opt::default();
+                let mut opt = super::option::Opt::default();
+                *(opt.chars_to_guess_mut()) = 100;
                 let test_data = path::Path::new("test_data");
                 let ifile_handle = &mut std::fs::File::open(test_data.join($input_file)).unwrap();
                 let enc = super::enc::Encoding::for_label($enc.as_bytes()).unwrap_or(&super::enc::UTF_8_INIT);
@@ -144,7 +176,7 @@ mod tests {
                 // let input_buffer = &mut [0u8; 32]; // 5K bytes
                 let output_buffer = &mut [0u8; 10*1024]; // 10K bytes
                 // let output_buffer = &mut [0u8; 128]; // 10K bytes
-                super::transcode(ifile_handle, output, enc, input_buffer, output_buffer, opt);
+                super::transcode(ifile_handle, output, enc, input_buffer, output_buffer, &opt);
                 let test_data = path::Path::new("test_data");
                 let efile_handle = &mut std::fs::File::open(test_data.join($expected_file)).unwrap();
                 let expected_string = &mut Vec::with_capacity(20*1024);
