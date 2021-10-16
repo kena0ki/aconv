@@ -37,9 +37,9 @@ pub struct Opt {
     #[structopt(name = "NUMBER", short = "n", long = "chars-to-guess", default_value = "100")]
     pub chars_to_guess: usize,
 
-    /// Prints only auto-detected encodings without decoded texts.
+    /// Show only auto-detected encodings without decoded texts.
     #[structopt(short, long)]
-    pub encoding: bool,
+    pub show: bool,
 
     /// Suppress error messages.
     #[structopt(short, long)]
@@ -75,8 +75,8 @@ impl Opt {
         return &mut self.chars_to_guess;
     }
 
-    pub fn encoding_mut(self: &mut Self) -> &mut bool {
-        return &mut self.encoding;
+    pub fn show_mut(self: &mut Self) -> &mut bool {
+        return &mut self.show;
     }
 
     pub fn quiet_mut(self: &mut Self) -> &mut bool {
