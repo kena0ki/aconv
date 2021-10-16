@@ -36,10 +36,10 @@ pub fn transcode(read: &mut impl io::Read, write: &mut impl io::Write, encoding:
         let eof = second_size == 0;
         (buf_guess, eof)
     };
-    let num_non_aschii = 1000; // 1000 chars of non aschii
+    let num_non_ascii = 1000; // 1000 chars of non ascii
     let transcoder = &mut transcoder::Transcoder::new_with_buff_size(None, encoding, 10 * 1024).unwrap();
     let num_read = {
-        let rslt = transcoder.guess_and_transcode(&mut buf_guess, output_buffer, num_non_aschii, 10, eof);
+        let rslt = transcoder.guess_and_transcode(&mut buf_guess, output_buffer, num_non_ascii, 10, eof);
         match rslt {
             Ok((_, num_read, num_written)) => {
                 let should_not_transcode = transcoder.src_encoding().unwrap() == transcoder.dst_encoding();
@@ -138,18 +138,19 @@ mod tests {
                 let opt = super::option::Opt::default();
                 let test_data = path::Path::new("test_data");
                 let ifile_handle = &mut std::fs::File::open(test_data.join($input_file)).unwrap();
-                let enc = super::enc::Encoding::for_label($enc.as_bytes());
+                let enc = super::enc::Encoding::for_label($enc.as_bytes()).unwrap_or(&super::enc::UTF_8_INIT);
                 let output = &mut Vec::with_capacity(20*1024);
                 let input_buffer = &mut [0u8; 5*1024]; // 5K bytes
                 // let input_buffer = &mut [0u8; 32]; // 5K bytes
                 let output_buffer = &mut [0u8; 10*1024]; // 10K bytes
                 // let output_buffer = &mut [0u8; 128]; // 10K bytes
-                super::transcode(ifile_handle, output, enc.unwrap(), input_buffer, output_buffer, opt);
+                super::transcode(ifile_handle, output, enc, input_buffer, output_buffer, opt);
                 let test_data = path::Path::new("test_data");
                 let efile_handle = &mut std::fs::File::open(test_data.join($expected_file)).unwrap();
                 let expected_string = &mut Vec::with_capacity(20*1024);
                 efile_handle.read_to_end(expected_string).unwrap();
-                let ofile_name = String::new()+$expected_file+"."+$input_file.split_once('_').unwrap().0+".output";
+                let src_encoding_name = $input_file.split_once('_').unwrap_or_else(|| $input_file.split_once('.').unwrap()).0;
+                let ofile_name = String::new()+$expected_file+"."+src_encoding_name+".output";
                 let ofile_handle: &mut dyn std::io::Write
                     = &mut std::fs::File::create(test_data.join(ofile_name)).unwrap();
                 ofile_handle.write_all(output).unwrap();
@@ -168,6 +169,7 @@ mod tests {
     test_transcode!(transcode_euckr_utf8       , "euc-kr_ko.txt"       , "utf8_ko.txt"     , "utf8");
     test_transcode!(transcode_koi8r_utf8       , "koi8-r_ru.txt"       , "utf8_ru.txt"     , "utf8");
     test_transcode!(transcode_windows1252_utf8 , "windows-1252_es.txt" , "utf8_es.txt"     , "utf8");
+    test_transcode!(transcode_ascii_utf8       , "ascii_en.txt"        , "utf8_en.txt"     , "utf8");
 
     test_transcode!(transcode_utf8_utf16le     , "utf8_th.txt"     , "utf16le_BOM_th.txt"  , "utf-16le"     );
     test_transcode!(transcode_utf8_utf16be     , "utf8_th.txt"     , "utf16be_BOM_th.txt"  , "utf-16be"     );
@@ -180,4 +182,8 @@ mod tests {
     test_transcode!(transcode_utf8_euckr       , "utf8_ko.txt"     , "euc-kr_ko.txt"       , "euc-kr"       );
     test_transcode!(transcode_utf8_koi8r       , "utf8_ru.txt"     , "koi8-r_ru.txt"       , "koi8-r"       );
     test_transcode!(transcode_utf8_windows1252 , "utf8_es.txt"     , "windows-1252_es.txt" , "windows-1252" );
+    test_transcode!(transcode_utf8_ascii       , "utf8_en.txt"     , "ascii_en.txt"        , "ascii"        );
+
+    test_transcode!(transcode_no_encoding_binary , "binary.jpeg"     , "binary.jpeg"         , "binary"     );
+    test_transcode!(transcode_no_encoding_utf8   , "utf8_th.txt"     , "utf8_th.txt"         , "utf8"       );
 }

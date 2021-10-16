@@ -11,6 +11,7 @@ iconv -t gb18030       utf8_zh_CHS.txt > gb18030_zh_CHS.txt
 iconv -t euc-kr        utf8_ko.txt     > euc-kr_ko.txt
 iconv -t koi8-r        utf8_ru.txt     > koi8-r_ru.txt
 iconv -t windows-1252  utf8_es.txt     > windows-1252_es.txt
+iconv -t aschii  utf8_en.txt     > aschii_en.txt
 
 # MEMO
 # encoding_rs does not seem to handle simbols in sjis properly
