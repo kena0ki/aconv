@@ -73,7 +73,7 @@ impl<'a> Transcoder {
         }
     }
 
-    pub fn guess_and_transcode(self: &mut Self, src: &mut [u8], dst: & mut [u8], num_non_textual_ascii: usize, non_text_limit: u8, eof: bool)
+    pub fn guess_and_transcode(self: &mut Self, src: &mut [u8], dst: & mut [u8], chars_to_guess: usize, non_text_limit: u8, eof: bool)
         -> Result<(enc::CoderResult, usize, usize), String> {
 
         // guess the encoding and get a decoder
@@ -94,7 +94,7 @@ impl<'a> Transcoder {
                     let is_non_text = Transcoder::is_non_text(&(*b as char));
                     if is_non_ascii || is_non_text {
                         non_ascii_cnt+=1;
-                        if non_ascii_cnt > num_non_textual_ascii {
+                        if non_ascii_cnt > chars_to_guess {
                             break;
                         }
                     }
