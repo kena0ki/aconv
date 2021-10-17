@@ -1,61 +1,62 @@
 pub mod option;
 pub mod constants;
 pub mod transcoder;
+pub mod error;
 
 use encoding_rs as enc;
 use std::io;
 use std::fs;
 use std::path;
-use std::str;
-use std::process;
 
-// enum Error {
-//     io::Error,
-//     String,
-// }
-
-pub fn cli(opt: &mut option::Opt) -> Result<(),io::Error> {
+pub fn cli(opt: &option::Opt) -> Result<(), error::Error> {
     let input_buffer = &mut [0u8; 5*1024]; // 5K bytes
     let output_buffer = &mut [0u8; 10*1024]; // 10K bytes
+
     let to_code = match enc::Encoding::for_label(opt.to_code.as_bytes()) {
-        None => return Err(io::Error::new(io::ErrorKind::Other,format!("Invalid encoding: {}", opt.to_code))),
+        None => return Err(error::Error::Other(format!("Invalid encoding: {}", opt.to_code))),
         Some(e) => e,
     };
 
-    if opt.paths.len() == 0 {
-        opt.paths_mut()[0] = path::PathBuf::new();
-        opt.paths_mut()[0].set_file_name("-");
-    }
-    for i in 0..opt.paths.len() {
-        let path = &opt.paths[i];
-        if path.to_string_lossy() != "-" {
-            if ! path::Path::exists(&opt.paths[i]) {
-                return Err(io::Error::new(io::ErrorKind::NotFound,
-                    format!("No such file or directory: {}", path.to_string_lossy())));
+    let mut ofile;
+    let stdout;
+    let mut stdout_lock;
+    let ofile: &mut dyn io::Write = match opt.output.as_ref() {
+        Some(path) => {
+            ofile = fs::File::create(path)
+                .map_err(|e| error::Error::Io { source: e, path: path.to_owned(), message: "Error creating the file".into() })?;
+            &mut ofile
+        },
+        None => {
+            stdout = std::io::stdout();
+            stdout_lock = stdout.lock();
+            &mut stdout_lock
+        },
+    };
+
+    let ipaths = &opt.paths;
+    if ipaths.len() == 0 {
+        let stdin = &mut std::io::stdin();
+        transcode(stdin, ofile, to_code, input_buffer, output_buffer, &opt);
+    } else {
+        for i in 0..ipaths.len() {
+            let path = &ipaths[i];
+            if ! path::Path::exists(&ipaths[i]) {
+                let source = io::Error::new(io::ErrorKind::NotFound, "No such file or directory");
+                return Err(error::Error::Io { source, path: path.to_owned(), message: "Error opening the file".into() });
             }
         }
-    }
-    let stdin = std::io::stdin();
-    for i in 0..opt.paths.len() {
-        let path = &opt.paths[i];
-        let mut file;
-        let mut lock;
-        let ifile: &mut dyn io::Read;
-        ifile = if path.to_string_lossy() != "-" {
-            file = fs::File::open(path)?;
-            &mut file
-        } else {
-            lock = stdin.lock();
-            &mut lock
+        for i in 0..ipaths.len() {
+            let path = &ipaths[i];
+            let ifile = &mut fs::File::open(path)
+                .map_err(|e| error::Error::Io { source: e, path: path.to_owned(), message: "Error opning the file".into() })?;
+            transcode(ifile, ofile, to_code, input_buffer, output_buffer, &opt);
         };
-        let mut stdout = std::io::stdout();
-        transcode(ifile, &mut stdout, to_code, input_buffer, output_buffer, &opt);
-    };
+    }
 
     return Ok(());
 }
 
-pub fn transcode(read: &mut dyn io::Read, write: &mut impl io::Write, encoding: &'static enc::Encoding,
+pub fn transcode(read: &mut dyn io::Read, write: &mut dyn io::Write, encoding: &'static enc::Encoding,
     input_buffer: &mut [u8], output_buffer: &mut [u8], opt: &option::Opt)
     -> Option<&'static enc::Encoding> {
 
@@ -111,7 +112,7 @@ pub fn transcode(read: &mut dyn io::Read, write: &mut impl io::Write, encoding: 
     return transcoder.src_encoding();
 }
 
-fn transcode_file_and_write(read: &mut dyn io::Read,write: &mut impl io::Write, transcoder: &mut transcoder::Transcoder,
+fn transcode_file_and_write(read: &mut dyn io::Read,write: &mut dyn io::Write, transcoder: &mut transcoder::Transcoder,
     input_buffer: &mut [u8], output_buffer: &mut [u8]) {
     loop {
         match read.read(input_buffer) {
@@ -129,7 +130,7 @@ fn transcode_file_and_write(read: &mut dyn io::Read,write: &mut impl io::Write, 
     };
 }
 
-fn transcode_buffer_and_write(write: &mut impl io::Write, transcoder: &mut transcoder::Transcoder,
+fn transcode_buffer_and_write(write: &mut dyn io::Write, transcoder: &mut transcoder::Transcoder,
     src: &[u8], output_buffer: &mut [u8], eof: bool) {
     let mut transcoder_input_start = 0;
     if src.len() == 0 && !eof { // encoding_rs unable to handle unnecessary calls well, so let's skip them
@@ -154,7 +155,7 @@ fn try_write(mut fnc: impl FnMut() -> Result<(),io::Error>) {
 
 fn exit_with_io_error(message: &str, cause: io::Error) {
     eprintln!("{}: {}", message, cause);
-    process::exit(constants::IO_ERROR);
+    std::process::exit(constants::IO_ERROR);
 }
 
 #[cfg(test)]

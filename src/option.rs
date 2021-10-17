@@ -32,16 +32,16 @@ pub struct Opt {
     pub non_text_threshold: u8,
 
     /// Number of non-textual ascii characters to guess the encoding.
-    /// Around 100 characters are good enough for most cases, but if guess accuracy is not good, increasing the value
+    /// Around 100 characters are enough for most cases, but if the guess is not accurate, increasing the value
     /// might help.
-    #[structopt(name = "NUMBER", short = "n", long = "chars-to-guess", default_value = "100")]
+    #[structopt(name = "NUMBER", short = "c", long = "chars-to-guess", default_value = "100")]
     pub chars_to_guess: usize,
 
-    /// Show only auto-detected encodings without decoded texts.
+    /// Only shows auto-detected encodings without decoded texts.
     #[structopt(short, long)]
     pub show: bool,
 
-    /// Suppress error messages.
+    /// Suppresses error messages.
     #[structopt(short, long)]
     pub quiet: bool,
 
