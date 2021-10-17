@@ -20,24 +20,46 @@ pub fn cli(opt: &option::Opt) -> Result<(), error::Error> {
     let mut ofile;
     let stdout;
     let mut stdout_lock;
-    let ofile: &mut dyn io::Write = match opt.output.as_ref() {
+    let mut writer: Option<&mut dyn io::Write>=None;
+    let mut dir_name: Option<&path::PathBuf>=None;
+    match opt.output.as_ref() {
         Some(path) => {
             ofile = fs::File::create(path)
                 .map_err(|e| error::Error::Io { source: e, path: path.to_owned(), message: "Error creating the file".into() })?;
-            &mut ofile
+            let meta = ofile.metadata()
+                .map_err(|e| error::Error::Io { source: e, path: path.to_owned(), message: "Error reading the metadata of the file".into() })?;
+            if meta.is_file() {
+                writer = Some(&mut ofile)
+            } else {
+                dir_name = Some(path);
+            }
         },
         None => {
             stdout = std::io::stdout();
             stdout_lock = stdout.lock();
-            &mut stdout_lock
+            writer = Some(&mut stdout_lock)
         },
     };
 
+    return run(writer, to_code, input_buffer, output_buffer, dir_name ,opt);
+}
+
+fn run(writer_opt: Option<&mut dyn io::Write>, to_code: &'static enc::Encoding, input_buffer: &mut [u8], output_buffer: &mut [u8]
+    ,dir_name: Option<&path::PathBuf>, opt: &option::Opt)
+    -> Result<(), error::Error> {
+    let mut ofile;
+    let writer: &mut dyn io::Write = if let Some(path) = dir_name {
+        ofile =fs::File::create(path)
+            .map_err(|e| error::Error::Io { source: e, path: path.to_owned(), message: "Error creating the file".into() })?;
+        &mut ofile
+    } else {
+        writer_opt.unwrap()
+    };
     let mut result: Result<(),error::Error> = Ok(());
     let ipaths = &opt.paths;
     if ipaths.len() == 0 {
         let stdin = &mut std::io::stdin();
-        let rslt = transcode(stdin, ofile, to_code, input_buffer, output_buffer, &opt);
+        let rslt = transcode(stdin, writer, to_code, input_buffer, output_buffer, &opt);
         if let Err(err) = rslt {
             if let error::TranscodeError::Guess(msg) = &err {
                 if ! opt.quiet {
@@ -56,9 +78,9 @@ pub fn cli(opt: &option::Opt) -> Result<(), error::Error> {
         }
         for i in 0..ipaths.len() {
             let path = &ipaths[i];
-            let ifile = &mut fs::File::open(path)
+            let reader = &mut fs::File::open(path)
                 .map_err(|e| error::Error::Io { source: e, path: path.to_owned(), message: "Error opning the file".into() })?;
-            let rslt = transcode(ifile, ofile, to_code, input_buffer, output_buffer, &opt);
+            let rslt = transcode(reader, writer, to_code, input_buffer, output_buffer, &opt);
             if let Err(err) = rslt {
                 if let error::TranscodeError::Read(source) = err {
                     return Err(error::Error::Io { source, path: path.to_owned(), message: "Error reading output".into() });
@@ -75,19 +97,18 @@ pub fn cli(opt: &option::Opt) -> Result<(), error::Error> {
             }
         };
     }
-
     return result;
 }
 
-pub fn transcode(read: &mut dyn io::Read, write: &mut dyn io::Write, encoding: &'static enc::Encoding,
+pub fn transcode(reader: &mut dyn io::Read, writer: &mut dyn io::Write, encoding: &'static enc::Encoding,
     input_buffer: &mut [u8], output_buffer: &mut [u8], opt: &option::Opt)
     -> Result<&'static enc::Encoding, error::TranscodeError> {
 
     // guess the input encoding using up to a few Kbytes of byte sequences
     let (mut buf_guess, eof) = {
         let in_size = input_buffer.len()-1; // to check if second read size is 0, -1 from input_buffer size.
-        let first_size=read.read(&mut input_buffer[..in_size]).unwrap_or(0);
-        let second_size=read.read(&mut input_buffer[first_size..]).unwrap_or(0);
+        let first_size=reader.read(&mut input_buffer[..in_size]).unwrap_or(0);
+        let second_size=reader.read(&mut input_buffer[first_size..]).unwrap_or(0);
         let buf_guess = &mut input_buffer[..(first_size+second_size)];
         let eof = second_size == 0;
         (buf_guess, eof)
@@ -100,45 +121,45 @@ pub fn transcode(read: &mut dyn io::Read, write: &mut dyn io::Write, encoding: &
                 let should_not_transcode = transcoder.src_encoding().unwrap() == transcoder.dst_encoding();
                 if should_not_transcode {
                     // write input to output as-is
-                    write.write_all(&buf_guess).map_err(map_write_err)?;
-                    io::copy(read, write).map(|_| ()).map_err(map_write_err)?;
+                    writer.write_all(&buf_guess).map_err(map_write_err)?;
+                    io::copy(reader, writer).map(|_| ()).map_err(map_write_err)?;
                     return Ok(transcoder.src_encoding().unwrap());
                 }
                 if transcoder.dst_encoding() == enc::UTF_16BE && [0xFE,0xFF] != output_buffer[..2] {
-                    write.write_all(b"\xFE\xFF").map_err(map_write_err)?; // add a BOM
+                    writer.write_all(b"\xFE\xFF").map_err(map_write_err)?; // add a BOM
                 }
                 if transcoder.dst_encoding() == enc::UTF_16LE && [0xFF,0xFE] != output_buffer[..2] {
-                    write.write_all(b"\xFF\xFE").map_err(map_write_err)?; // add a BOM
+                    writer.write_all(b"\xFF\xFE").map_err(map_write_err)?; // add a BOM
                 }
                 // write transcoded bytes in buffer
-                write.write_all(&output_buffer[..num_written]).map_err(map_write_err)?;
+                writer.write_all(&output_buffer[..num_written]).map_err(map_write_err)?;
                 num_read
             },
             Err(err) => {
                 // write input to output as-is
-                write.write_all(&buf_guess).map_err(map_write_err)?;
-                io::copy(read, write).map(|_| ()).map_err(map_write_err)?;
+                writer.write_all(&buf_guess).map_err(map_write_err)?;
+                io::copy(reader, writer).map(|_| ()).map_err(map_write_err)?;
                 return Err(error::TranscodeError::Guess(err));
             },
         }
     };
 
     // decode rest of bytes in buffer
-    transcode_buffer_and_write(write, transcoder, &buf_guess[num_read..], output_buffer, false)?;
+    transcode_buffer_and_write(writer, transcoder, &buf_guess[num_read..], output_buffer, false)?;
 
     // decode bytes remaining in file
-    transcode_file_and_write(read, write, transcoder, input_buffer, output_buffer)?;
+    transcode_file_and_write(reader, writer, transcoder, input_buffer, output_buffer)?;
 
     return Ok(transcoder.src_encoding().unwrap());
 }
 
-fn transcode_file_and_write(read: &mut dyn io::Read,write: &mut dyn io::Write, transcoder: &mut transcoder::Transcoder,
+fn transcode_file_and_write(reader: &mut dyn io::Read,writer: &mut dyn io::Write, transcoder: &mut transcoder::Transcoder,
     input_buffer: &mut [u8], output_buffer: &mut [u8])
     -> Result<(), error::TranscodeError>{
     loop {
-        let num_read = read.read(input_buffer).map_err(map_read_err)?;
+        let num_read = reader.read(input_buffer).map_err(map_read_err)?;
         let eof = num_read == 0;
-        transcode_buffer_and_write(write, transcoder, &input_buffer[..num_read], output_buffer, eof)?;
+        transcode_buffer_and_write(writer, transcoder, &input_buffer[..num_read], output_buffer, eof)?;
         if eof {
             break;
         }
@@ -146,7 +167,7 @@ fn transcode_file_and_write(read: &mut dyn io::Read,write: &mut dyn io::Write, t
     return Ok(());
 }
 
-fn transcode_buffer_and_write(write: &mut dyn io::Write, transcoder: &mut transcoder::Transcoder,
+fn transcode_buffer_and_write(writer: &mut dyn io::Write, transcoder: &mut transcoder::Transcoder,
     src: &[u8], output_buffer: &mut [u8], eof: bool) 
     -> Result<(), error::TranscodeError>{
     let mut transcoder_input_start = 0;
@@ -157,7 +178,7 @@ fn transcode_buffer_and_write(write: &mut dyn io::Write, transcoder: &mut transc
         let (result, num_transcoder_read, num_transcoder_written)
             = transcoder.transcode(&src[transcoder_input_start..], output_buffer, eof);
         transcoder_input_start+=num_transcoder_read;
-        write.write_all(&output_buffer[..num_transcoder_written]).map_err(map_write_err)?;
+        writer.write_all(&output_buffer[..num_transcoder_written]).map_err(map_write_err)?;
         if result == enc::CoderResult::InputEmpty {
             break;
         }
