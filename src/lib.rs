@@ -13,7 +13,7 @@ pub fn cli(opt: &option::Opt) -> Result<(), error::Error> {
     let output_buffer = &mut [0u8; 10*1024]; // 10K bytes
 
     let to_code = match enc::Encoding::for_label(opt.to_code.as_bytes()) {
-        None => return Err(error::Error::Other(format!("Invalid encoding: {}", opt.to_code))),
+        None => return Err(error::Error::other(&format!("Invalid encoding: {}", opt.to_code))),
         Some(e) => e,
     };
 
@@ -33,10 +33,19 @@ pub fn cli(opt: &option::Opt) -> Result<(), error::Error> {
         },
     };
 
+    let mut result: Result<(),error::Error> = Ok(());
     let ipaths = &opt.paths;
     if ipaths.len() == 0 {
         let stdin = &mut std::io::stdin();
-        transcode(stdin, ofile, to_code, input_buffer, output_buffer, &opt);
+        let rslt = transcode(stdin, ofile, to_code, input_buffer, output_buffer, &opt);
+        if let Err(err) = rslt {
+            if let error::TranscodeError::Guess(msg) = &err {
+                if ! opt.quiet {
+                    eprintln!("{}", msg);
+                }
+            }
+            result = Err(err.into());
+        }
     } else {
         for i in 0..ipaths.len() {
             let path = &ipaths[i];
@@ -49,16 +58,30 @@ pub fn cli(opt: &option::Opt) -> Result<(), error::Error> {
             let path = &ipaths[i];
             let ifile = &mut fs::File::open(path)
                 .map_err(|e| error::Error::Io { source: e, path: path.to_owned(), message: "Error opning the file".into() })?;
-            transcode(ifile, ofile, to_code, input_buffer, output_buffer, &opt);
+            let rslt = transcode(ifile, ofile, to_code, input_buffer, output_buffer, &opt);
+            if let Err(err) = rslt {
+                if let error::TranscodeError::Read(source) = err {
+                    return Err(error::Error::Io { source, path: path.to_owned(), message: "Error reading output".into() });
+                }
+                if let error::TranscodeError::Write(source) = err {
+                    return Err(error::Error::Io { source, path: path.to_owned(), message: "Error writing output".into() });
+                }
+                if let error::TranscodeError::Guess(msg) = &err {
+                    if ! opt.quiet {
+                        eprintln!("{}", msg);
+                    }
+                }
+                result = Err(err.into());
+            }
         };
     }
 
-    return Ok(());
+    return result;
 }
 
 pub fn transcode(read: &mut dyn io::Read, write: &mut dyn io::Write, encoding: &'static enc::Encoding,
     input_buffer: &mut [u8], output_buffer: &mut [u8], opt: &option::Opt)
-    -> Option<&'static enc::Encoding> {
+    -> Result<&'static enc::Encoding, error::TranscodeError> {
 
     // guess the input encoding using up to a few Kbytes of byte sequences
     let (mut buf_guess, eof) = {
@@ -77,86 +100,83 @@ pub fn transcode(read: &mut dyn io::Read, write: &mut dyn io::Write, encoding: &
                 let should_not_transcode = transcoder.src_encoding().unwrap() == transcoder.dst_encoding();
                 if should_not_transcode {
                     // write input to output as-is
-                    try_write(|| write.write_all(&buf_guess));
-                    try_write(|| io::copy(read, write).map(|_| ()));
-                    return transcoder.src_encoding();
+                    write.write_all(&buf_guess).map_err(map_write_err)?;
+                    io::copy(read, write).map(|_| ()).map_err(map_write_err)?;
+                    return Ok(transcoder.src_encoding().unwrap());
                 }
                 if transcoder.dst_encoding() == enc::UTF_16BE && [0xFE,0xFF] != output_buffer[..2] {
-                    try_write(|| write.write_all(b"\xFE\xFF")); // add a BOM
+                    write.write_all(b"\xFE\xFF").map_err(map_write_err)?; // add a BOM
                 }
                 if transcoder.dst_encoding() == enc::UTF_16LE && [0xFF,0xFE] != output_buffer[..2] {
-                    try_write(|| write.write_all(b"\xFF\xFE")); // add a BOM
+                    write.write_all(b"\xFF\xFE").map_err(map_write_err)?; // add a BOM
                 }
                 // write transcoded bytes in buffer
-                try_write(|| write.write_all(&output_buffer[..num_written]));
+                write.write_all(&output_buffer[..num_written]).map_err(map_write_err)?;
                 num_read
             },
             Err(err) => {
-                if ! opt.quiet {
-                    eprintln!("{}", err);
-                }
                 // write input to output as-is
-                try_write(|| write.write_all(&buf_guess));
-                try_write(|| io::copy(read, write).map(|_| ()));
-                return None;
+                write.write_all(&buf_guess).map_err(map_write_err)?;
+                io::copy(read, write).map(|_| ()).map_err(map_write_err)?;
+                return Err(error::TranscodeError::Guess(err));
             },
         }
     };
 
     // decode rest of bytes in buffer
-    transcode_buffer_and_write(write, transcoder, &buf_guess[num_read..], output_buffer, false);
+    transcode_buffer_and_write(write, transcoder, &buf_guess[num_read..], output_buffer, false)?;
 
     // decode bytes remaining in file
-    transcode_file_and_write(read, write, transcoder, input_buffer, output_buffer);
+    transcode_file_and_write(read, write, transcoder, input_buffer, output_buffer)?;
 
-    return transcoder.src_encoding();
+    return Ok(transcoder.src_encoding().unwrap());
 }
 
 fn transcode_file_and_write(read: &mut dyn io::Read,write: &mut dyn io::Write, transcoder: &mut transcoder::Transcoder,
-    input_buffer: &mut [u8], output_buffer: &mut [u8]) {
+    input_buffer: &mut [u8], output_buffer: &mut [u8])
+    -> Result<(), error::TranscodeError>{
     loop {
-        match read.read(input_buffer) {
-            Ok(num_read) => {
-                let eof = num_read == 0;
-                transcode_buffer_and_write(write, transcoder, &input_buffer[..num_read], output_buffer, eof);
-                if eof {
-                    break;
-                }
-            }
-            Err(cause) => {
-                exit_with_io_error("Error reading input", cause);
-            }
+        let num_read = read.read(input_buffer).map_err(map_read_err)?;
+        let eof = num_read == 0;
+        transcode_buffer_and_write(write, transcoder, &input_buffer[..num_read], output_buffer, eof)?;
+        if eof {
+            break;
         }
     };
+    return Ok(());
 }
 
 fn transcode_buffer_and_write(write: &mut dyn io::Write, transcoder: &mut transcoder::Transcoder,
-    src: &[u8], output_buffer: &mut [u8], eof: bool) {
+    src: &[u8], output_buffer: &mut [u8], eof: bool) 
+    -> Result<(), error::TranscodeError>{
     let mut transcoder_input_start = 0;
     if src.len() == 0 && !eof { // encoding_rs unable to handle unnecessary calls well, so let's skip them
-        return;
+        return Ok(());
     }
     loop {
         let (result, num_transcoder_read, num_transcoder_written)
             = transcoder.transcode(&src[transcoder_input_start..], output_buffer, eof);
         transcoder_input_start+=num_transcoder_read;
-        try_write(|| write.write_all(&output_buffer[..num_transcoder_written]));
+        write.write_all(&output_buffer[..num_transcoder_written]).map_err(map_write_err)?;
         if result == enc::CoderResult::InputEmpty {
             break;
         }
     }
+    return Ok(());
 }
 
-fn try_write(mut fnc: impl FnMut() -> Result<(),io::Error>) {
-    if let Err(cause) = fnc() {
-        exit_with_io_error("Error writing output", cause);
-    }
+fn map_write_err(err: io::Error) -> error::TranscodeError {
+    return error::TranscodeError::Write(err);
 }
 
-fn exit_with_io_error(message: &str, cause: io::Error) {
-    eprintln!("{}: {}", message, cause);
-    std::process::exit(constants::IO_ERROR);
+fn map_read_err(err: io::Error) -> error::TranscodeError {
+    return error::TranscodeError::Read(err);
 }
+
+// fn _exit_with_io_error(message: &str, cause: io::Error) {
+//     eprintln!("{}: {}", message, cause);
+//     std::process::exit(constants::IO_ERROR);
+// }
 
 #[cfg(test)]
 mod tests {
@@ -177,7 +197,7 @@ mod tests {
                 // let input_buffer = &mut [0u8; 32]; // 5K bytes
                 let output_buffer = &mut [0u8; 10*1024]; // 10K bytes
                 // let output_buffer = &mut [0u8; 128]; // 10K bytes
-                super::transcode(ifile_handle, output, enc, input_buffer, output_buffer, &opt);
+                let _ = super::transcode(ifile_handle, output, enc, input_buffer, output_buffer, &opt);
                 let test_data = path::Path::new("test_data");
                 let efile_handle = &mut std::fs::File::open(test_data.join($expected_file)).unwrap();
                 let expected_string = &mut Vec::with_capacity(20*1024);
