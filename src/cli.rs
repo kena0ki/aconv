@@ -8,7 +8,16 @@ use std::io;
 use std::fs;
 use std::path;
 
-pub fn run(opt: &option::Opt) -> Result<(), error::Error> {
+pub fn dispatch(opt: &option::Opt) -> Result<(), error::Error> {
+    if opt.list {
+        list();
+        return Ok(());
+    } else {
+        return run(opt);
+    }
+}
+
+fn run(opt: &option::Opt) -> Result<(), error::Error> {
     let input_buffer = &mut [0u8; 5*1024]; // 5K bytes
     let output_buffer = &mut [0u8; 10*1024]; // 10K bytes
 

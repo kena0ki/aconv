@@ -2,6 +2,7 @@
 use std::io;
 use std::path;
 use std::fmt;
+use exitcode;
 
 #[derive(Debug)]
 pub enum Error {
@@ -12,6 +13,20 @@ pub enum Error {
 impl Error {
     pub fn other(message: &str) -> Error {
         return Error::TranscodeError(TranscodeError::Other(message.into()));
+    }
+    pub fn error_code(self: &Self) -> exitcode::ExitCode {
+        match self {
+            Error::Io{..} => exitcode::IOERR,
+            Error::TranscodeError(_) => exitcode::DATAERR,
+        }
+    }
+    pub fn is_guess(self: &Self) -> bool {
+        if let Error::TranscodeError(e) = self {
+            if let TranscodeError::Guess(_) = e {
+                return true;
+            }
+        }
+        return false;
     }
 }
 
