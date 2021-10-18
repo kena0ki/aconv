@@ -1,5 +1,6 @@
 use crate::option;
 use crate::transcode;
+use crate::transcoder::constants;
 use crate::error;
 
 use encoding_rs as enc;
@@ -122,5 +123,19 @@ fn traverse(writer_opt: &mut Option<&mut dyn io::Write>, to_code: &'static enc::
         }
         return result;
     }
+}
+
+fn list() {
+    print!("{}", constants::ENCODINGS[0].1);
+    for i in 1..constants::ENCODINGS.len() {
+        let encoding = constants::ENCODINGS[i];
+        if constants::ENCODINGS[i-1].0 == encoding.0 {
+            print!(" ");
+        } else {
+            println!();
+        }
+        print!("{}", encoding.1);
+    }
+    println!();
 }
 

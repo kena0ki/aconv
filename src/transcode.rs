@@ -1,5 +1,5 @@
 use crate::option;
-use crate::transcoder;
+pub use crate::transcoder;
 use crate::error;
 
 use encoding_rs as enc;

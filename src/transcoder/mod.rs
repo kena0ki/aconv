@@ -1,4 +1,4 @@
-mod constants;
+pub mod constants;
 
 use encoding_rs as enc;
 use chardetng as cd;
