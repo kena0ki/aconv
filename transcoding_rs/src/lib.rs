@@ -211,7 +211,7 @@ mod tests {
         ($name:ident, $input_file:expr, $expected_file:expr, $enc:expr) => {
             #[test]
             fn $name() {
-                let test_data = path::Path::new("test_data");
+                let test_data = path::Path::new("../test_data/transcode");
                 let ifile_handle = &mut std::fs::File::open(test_data.join($input_file)).unwrap();
                 let input_bytes = &mut [0u8; 500];
                 ifile_handle.read(input_bytes).unwrap();
@@ -221,7 +221,7 @@ mod tests {
                 // println!("{:x?}", &input_bytes[..15]);
                 match t.guess_and_transcode(input_bytes, output_bytes, 100, 5, false) {
                     Ok((_, _, num_written)) => {
-                        let test_data = path::Path::new("test_data");
+                        let test_data = path::Path::new("../test_data/transcode");
                         let efile_handle = &mut std::fs::File::open(test_data.join($expected_file)).unwrap();
                         let expected_string = &mut Vec::new();
                         efile_handle.read_to_end(expected_string).unwrap();
@@ -259,7 +259,7 @@ mod tests {
 
     #[test]
     fn test_guess_error() {
-        let file_handle = &mut std::fs::File::open("test_data/binary.jpeg").unwrap();
+        let file_handle = &mut std::fs::File::open("../test_data/transcode/binary.jpeg").unwrap();
         let input = &mut [0u8; 500];
         file_handle.read(input).unwrap();
         let enc = super::enc::Encoding::for_label("utf-8".as_bytes());

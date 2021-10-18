@@ -1,7 +1,7 @@
 use crate::option;
-pub use crate::transcoder;
 use crate::error;
 
+use transcoding_rs as tc;
 use encoding_rs as enc;
 use std::io;
 
@@ -18,7 +18,7 @@ pub fn transcode(reader: &mut dyn io::Read, writer: &mut dyn io::Write, encoding
         let eof = second_size == 0;
         (buf_guess, eof)
     };
-    let transcoder = &mut transcoder::Transcoder::new_with_buff_size(None, encoding, 10 * 1024).unwrap();
+    let transcoder = &mut tc::Transcoder::new_with_buff_size(None, encoding, 10 * 1024).unwrap();
     let num_read = {
         let rslt = transcoder.guess_and_transcode(&mut buf_guess, output_buffer, opt.chars_to_guess, opt.non_text_threshold, eof);
         match rslt {
@@ -62,7 +62,7 @@ pub fn transcode(reader: &mut dyn io::Read, writer: &mut dyn io::Write, encoding
     return Ok(transcoder.src_encoding().unwrap());
 }
 
-fn transcode_file_and_write(reader: &mut dyn io::Read,writer: &mut dyn io::Write, transcoder: &mut transcoder::Transcoder,
+fn transcode_file_and_write(reader: &mut dyn io::Read,writer: &mut dyn io::Write, transcoder: &mut tc::Transcoder,
     input_buffer: &mut [u8], output_buffer: &mut [u8])
     -> Result<(), error::TranscodeError>{
     loop {
@@ -76,7 +76,7 @@ fn transcode_file_and_write(reader: &mut dyn io::Read,writer: &mut dyn io::Write
     return Ok(());
 }
 
-fn transcode_buffer_and_write(writer: &mut dyn io::Write, transcoder: &mut transcoder::Transcoder,
+fn transcode_buffer_and_write(writer: &mut dyn io::Write, transcoder: &mut tc::Transcoder,
     src: &[u8], output_buffer: &mut [u8], eof: bool) 
     -> Result<(), error::TranscodeError>{
     let mut transcoder_input_start = 0;
@@ -114,7 +114,7 @@ mod tests {
             fn $name() {
                 let mut opt = super::option::Opt::default();
                 *(opt.chars_to_guess_mut()) = 100;
-                let test_data = path::Path::new("test_data");
+                let test_data = path::Path::new("test_data/transcode");
                 let ifile_handle = &mut std::fs::File::open(test_data.join($input_file)).unwrap();
                 let enc = super::enc::Encoding::for_label($enc.as_bytes()).unwrap_or(&super::enc::UTF_8_INIT);
                 let output = &mut Vec::with_capacity(20*1024);
@@ -123,7 +123,6 @@ mod tests {
                 let output_buffer = &mut [0u8; 10*1024]; // 10K bytes
                 // let output_buffer = &mut [0u8; 128]; // 10K bytes
                 let _ = super::transcode(ifile_handle, output, enc, input_buffer, output_buffer, &opt);
-                let test_data = path::Path::new("test_data");
                 let efile_handle = &mut std::fs::File::open(test_data.join($expected_file)).unwrap();
                 let expected_string = &mut Vec::with_capacity(20*1024);
                 efile_handle.read_to_end(expected_string).unwrap();

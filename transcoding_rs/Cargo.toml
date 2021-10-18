@@ -1,12 +1,12 @@
 [package]
-name = "aconv"
+name = "transcoding_rs"
 version = "0.1.0"
 edition = "2018"
 authors = ["kena0ki"]
 license = "MIT OR Apache-2.0"
 description = "Convert texts from an auto-detected encoding to UTF-8 or a specified encoding"
-documentation = "https://docs.rs/aconv"
-repository = "https://github.com/kena0ki/aconv"
+documentation = "https://docs.rs/transcoding_rs"
+repository = "https://github.com/kena0ki/aconv/transcoding_rs"
 keywords = ["encoding", "UTF-8", "unicode", "charset", "i18n" , "CJK"]
 categories = ["Encoding", "Command line utilities", "Text processing", "Internationalization (i18n)"]
 readme = "README.md"
@@ -16,12 +16,4 @@ readme = "README.md"
 [dependencies]
 chardetng = "0.1.14"
 encoding_rs = "0.8.28"
-structopt = "0.3.23"
 log = "0.4"
-exitcode = "1.1.2"
-transcoding_rs = { path = "transcoding_rs" }
-
-[workspace]
-members = [
-  "transcoding_rs",
-]

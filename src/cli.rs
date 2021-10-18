@@ -1,9 +1,9 @@
 use crate::option;
 use crate::transcode;
-use crate::transcoder::constants;
 use crate::error;
 
 use encoding_rs as enc;
+use transcoding_rs::constants;
 use std::io;
 use std::fs;
 use std::path;
