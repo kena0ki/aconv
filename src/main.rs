@@ -5,7 +5,7 @@ fn main() -> () {
     // let opt = utf8ify::option::Opt::default();
     let opt: option::Opt = StructOpt::from_args();
     println!("{:?}", opt);
-    match utf8ify::cli(&opt) {
+    match utf8ify::cli::run(&opt) {
         Err(err) => eprintln!("{}", err),
         Ok(_) => {},
     };

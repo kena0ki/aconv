@@ -41,5 +41,3 @@ pub const NON_TEXTS: [char; 24] =  [
     '\u{007F}', // Delete	DEL
 ];
 
-pub const IO_ERROR: i32 = 1;
-
