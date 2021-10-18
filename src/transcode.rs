@@ -23,6 +23,10 @@ pub fn transcode(reader: &mut dyn io::Read, writer: &mut dyn io::Write, encoding
         let rslt = transcoder.guess_and_transcode(&mut buf_guess, output_buffer, opt.chars_to_guess, opt.non_text_threshold, eof);
         match rslt {
             Ok((_, num_read, num_written)) => {
+                let src_enc = transcoder.src_encoding().unwrap();
+                if opt.show {
+                    return Ok(src_enc);
+                }
                 let should_not_transcode = transcoder.src_encoding().unwrap() == transcoder.dst_encoding();
                 if should_not_transcode {
                     // write input to output as-is
@@ -98,13 +102,6 @@ fn map_write_err(err: io::Error) -> error::TranscodeError {
 fn map_read_err(err: io::Error) -> error::TranscodeError {
     return error::TranscodeError::Read(err);
 }
-
-
-// const IO_ERROR: i32 = 1;
-// fn _exit_with_io_error(message: &str, cause: io::Error) {
-//     eprintln!("{}: {}", message, cause);
-//     std::process::exit(constants::IO_ERROR);
-// }
 
 #[cfg(test)]
 mod tests {

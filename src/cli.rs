@@ -56,15 +56,22 @@ fn run(opt: &option::Opt) -> Result<(), error::Error> {
     if in_paths.len() == 0 {
         let stdin = &mut std::io::stdin();
         let rslt = transcode::transcode(stdin, writer.unwrap(), to_code, input_buffer, output_buffer, &opt);
-        if let Err(err) = rslt {
-            if let error::TranscodeError::Guess(msg) = &err {
-                if ! opt.quiet {
-                    eprintln!("{}", msg);
+        match rslt {
+            Ok(enc) => {
+                if opt.show {
+                    println!("-: {}", enc.name());
                 }
+                return Ok(());
+            },
+            Err(err) => {
+                if let error::TranscodeError::Guess(msg) = &err {
+                    if ! opt.quiet {
+                        eprintln!("{}", msg);
+                    }
+                }
+                return Err(err.into());
             }
-            return Err(err.into());
         }
-        return Ok(());
     } else {
         for i in 0..in_paths.len() {
             let in_path = &in_paths[i];
@@ -85,7 +92,6 @@ fn run(opt: &option::Opt) -> Result<(), error::Error> {
 fn traverse(writer_opt: &mut Option<&mut dyn io::Write>, to_code: &'static enc::Encoding, input_buffer: &mut [u8], output_buffer: &mut [u8]
     , in_path: &path::Path, dir_opt: Option<&path::PathBuf>, opt: &option::Opt)
     -> Result<(), error::Error> {
-    let mut result: Result<(),error::Error> = Ok(());
     let meta = in_path.metadata()
         .map_err(|e| error::Error::Io { source: e, path: in_path.to_owned(), message: "Error reading the metadata of the file".into() })?;
     if meta.is_dir() {
@@ -116,21 +122,28 @@ fn traverse(writer_opt: &mut Option<&mut dyn io::Write>, to_code: &'static enc::
         let reader = &mut fs::File::open(in_path)
             .map_err(|e| error::Error::Io { source: e, path: in_path.to_owned(), message: "Error opening the file".into() })?;
         let rslt = transcode::transcode(reader, writer, to_code, input_buffer, output_buffer, &opt);
-        if let Err(err) = rslt {
-            if let error::TranscodeError::Read(source) = err {
-                return Err(error::Error::Io { source, path: in_path.to_owned(), message: "Error reading the file".into() });
-            }
-            if let error::TranscodeError::Write(source) = err {
-                return Err(error::Error::Io { source, path: in_path.to_owned(), message: "Error writing the file".into() });
-            }
-            if let error::TranscodeError::Guess(msg) = &err {
-                if ! opt.quiet {
-                    eprintln!("{}", msg);
+        match rslt {
+            Ok(enc) => {
+                if opt.show {
+                    println!("{}: {}", in_path.to_string_lossy(), enc.name());
                 }
+                return Ok(());
+            },
+            Err(err) => {
+                if let error::TranscodeError::Read(source) = err {
+                    return Err(error::Error::Io { source, path: in_path.to_owned(), message: "Error reading the file".into() });
+                }
+                if let error::TranscodeError::Write(source) = err {
+                    return Err(error::Error::Io { source, path: in_path.to_owned(), message: "Error writing the file".into() });
+                }
+                if let error::TranscodeError::Guess(msg) = &err {
+                    if ! opt.quiet {
+                        eprintln!("{}", msg);
+                    }
+                }
+                return Err(err.into());
             }
-            result = Err(err.into());
         }
-        return result;
     }
 }
 
