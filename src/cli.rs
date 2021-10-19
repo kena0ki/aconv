@@ -26,7 +26,6 @@ fn run(opt: &option::Opt) -> Result<(), error::Error> {
         Some(e) => e,
     };
 
-    let mut ofile;
     let stdout = std::io::stdout();
     let mut stdout_lock;
     let mut writer: Option<&mut dyn io::Write>=None;
@@ -34,13 +33,7 @@ fn run(opt: &option::Opt) -> Result<(), error::Error> {
     let in_paths = &opt.paths;
     match opt.output.as_ref() {
         Some(out_path) => {
-            ofile = fs::File::create(out_path)
-                .map_err(|e| error::Error::Io { source: e, path: out_path.to_owned(), message: "Error creating the file".into() })?;
-            let meta = ofile.metadata()
-                .map_err(|e| error::Error::Io { source: e, path: out_path.to_owned(), message: "Error reading the metadata of the file".into() })?;
-            if ! meta.is_dir() {
-                writer = Some(&mut ofile);
-            } else if in_paths.len() == 0 {
+            if in_paths.len() == 0 {
                 stdout_lock = stdout.lock();
                 writer = Some(&mut stdout_lock);
             } else {
@@ -90,11 +83,9 @@ fn run(opt: &option::Opt) -> Result<(), error::Error> {
 }
 
 fn traverse(writer_opt: &mut Option<&mut dyn io::Write>, to_code: &'static enc::Encoding, input_buffer: &mut [u8], output_buffer: &mut [u8]
-    , in_path: &path::Path, dir_opt: Option<&path::PathBuf>, opt: &option::Opt)
+    , in_path: &path::PathBuf, dir_opt: Option<&path::PathBuf>, opt: &option::Opt)
     -> Result<(), error::Error> {
-    let meta = in_path.metadata()
-        .map_err(|e| error::Error::Io { source: e, path: in_path.to_owned(), message: "Error reading the metadata of the file".into() })?;
-    if meta.is_dir() {
+    if in_path.is_dir() {
         let dir_ent = fs::read_dir(in_path)
             .map_err(|e| error::Error::Io { source: e, path: in_path.to_owned(), message: "Error reading the directory".into() })?;
         for child in dir_ent {
@@ -102,7 +93,7 @@ fn traverse(writer_opt: &mut Option<&mut dyn io::Write>, to_code: &'static enc::
                 .map_err(|e| error::Error::Io { source: e, path: in_path.to_owned(), message: "Error reading the directory".into() })?;
             let child_path = &c.path();
             if let Some(current_out_dir) = dir_opt {
-                let out_dir = &path::Path::join(current_out_dir, in_path.file_name().unwrap());
+                let out_dir = &current_out_dir.join(in_path.file_name().unwrap());
                 traverse(&mut None, to_code, input_buffer, output_buffer, child_path, Some(out_dir), opt)?;
             } else {
                 traverse(writer_opt, to_code, input_buffer, output_buffer, child_path, None, opt)?;
@@ -112,15 +103,18 @@ fn traverse(writer_opt: &mut Option<&mut dyn io::Write>, to_code: &'static enc::
     } else {
         let mut ofile;
         let writer: &mut dyn io::Write = if let Some(dir_path) = dir_opt {
-            let out_path = &path::Path::join(dir_path, in_path);
+            create_dir_recursive(dir_path)?;
+            let out_path = &dir_path.join(in_path.file_name().unwrap());
             ofile =fs::File::create(out_path)
                 .map_err(|e| error::Error::Io { source: e, path: out_path.to_owned(), message: "Error creating the file".into() })?;
+            println!("ofile: {:?}", ofile);
             &mut ofile
         } else {
             writer_opt.as_mut().unwrap()
         };
         let reader = &mut fs::File::open(in_path)
             .map_err(|e| error::Error::Io { source: e, path: in_path.to_owned(), message: "Error opening the file".into() })?;
+        println!("output buffer length: {}", output_buffer.len());
         let rslt = transcode::transcode(reader, writer, to_code, input_buffer, output_buffer, &opt);
         match rslt {
             Ok(enc) => {
@@ -147,6 +141,19 @@ fn traverse(writer_opt: &mut Option<&mut dyn io::Write>, to_code: &'static enc::
     }
 }
 
+fn create_dir_recursive(path: &path::PathBuf)
+    -> Result<(), error::Error> {
+    let path_to_create = &mut path::PathBuf::new();
+    for p in path.iter() {
+        path_to_create.push(p);
+        if ! path_to_create.is_dir() {
+            fs::create_dir(&path_to_create)
+                .map_err(|e| error::Error::Io { source: e, path: path_to_create.to_owned(), message: "Error creating the directory".into() })?;
+        }
+    }
+    return Ok(());
+}
+
 fn list() {
     print!("{}", constants::ENCODINGS[0].1);
     for i in 1..constants::ENCODINGS.len() {
@@ -159,5 +166,48 @@ fn list() {
         print!("{}", encoding.1);
     }
     println!();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dir_to_dir() {
+        let opt = &mut option::Opt::new()
+            .paths(vec![path::PathBuf::from("test_data/child")])
+            .output(Some(path::PathBuf::from("output")));
+        run(opt).unwrap();
+    }
+
+    #[test]
+    fn files_to_dir() {
+        let opt = &mut option::Opt::new()
+            .paths(vec![path::PathBuf::from("test_data/child")])
+            .output(Some(path::PathBuf::from("output")));
+        run(opt).unwrap();
+    }
+
+    #[test]
+    fn to_sjis() {
+        let opt = &mut option::Opt::new()
+            .paths(vec![path::PathBuf::from("test_data/utf8_ja.txt")])
+            .to_code("sjis");
+        run(opt).unwrap();
+    }
+
+    #[test]
+    fn to_list() {
+        let opt = &mut option::Opt::new()
+            .list(true);
+        run(opt).unwrap();
+    }
+
+    #[test]
+    fn to_show() {
+        let opt = &mut option::Opt::new()
+            .show(true);
+        run(opt).unwrap();
+    }
 }
 

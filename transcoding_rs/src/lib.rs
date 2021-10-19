@@ -126,13 +126,17 @@ impl<'a> Transcoder {
             str::from_utf8_unchecked_mut(&mut decode_buffer[..num_decoder_written])
         };
         let mut non_text_cnt = 0;
-        for c in decode_buffer_str.chars() {
-            if Transcoder::is_non_text(&c) {
-                println!("non text: {:?}", c);
-                non_text_cnt+=1;
+        let auto_detection_failed = if 0 < decode_buffer_str.chars().count() {
+            for c in decode_buffer_str.chars() {
+                if Transcoder::is_non_text(&c) {
+                    println!("non text: {:?}", c);
+                    non_text_cnt+=1;
+                }
             }
-        }
-        let auto_detection_failed = (non_text_limit as usize) < (non_text_cnt * 100 / decode_buffer_str.chars().count() );
+            (non_text_limit as usize) < (non_text_cnt * 100 / decode_buffer_str.chars().count())
+        } else {
+            true
+        };
         if auto_detection_failed {
             return Err("Auto-detection seems to fail.".into());
         }
@@ -211,7 +215,7 @@ mod tests {
         ($name:ident, $input_file:expr, $expected_file:expr, $enc:expr) => {
             #[test]
             fn $name() {
-                let test_data = path::Path::new("../test_data/transcode");
+                let test_data = path::Path::new("../test_data");
                 let ifile_handle = &mut std::fs::File::open(test_data.join($input_file)).unwrap();
                 let input_bytes = &mut [0u8; 500];
                 ifile_handle.read(input_bytes).unwrap();
@@ -221,7 +225,6 @@ mod tests {
                 // println!("{:x?}", &input_bytes[..15]);
                 match t.guess_and_transcode(input_bytes, output_bytes, 100, 5, false) {
                     Ok((_, _, num_written)) => {
-                        let test_data = path::Path::new("../test_data/transcode");
                         let efile_handle = &mut std::fs::File::open(test_data.join($expected_file)).unwrap();
                         let expected_string = &mut Vec::new();
                         efile_handle.read_to_end(expected_string).unwrap();
@@ -259,7 +262,7 @@ mod tests {
 
     #[test]
     fn test_guess_error() {
-        let file_handle = &mut std::fs::File::open("../test_data/transcode/binary.jpeg").unwrap();
+        let file_handle = &mut std::fs::File::open("../test_data/binary.jpeg").unwrap();
         let input = &mut [0u8; 500];
         file_handle.read(input).unwrap();
         let enc = super::enc::Encoding::for_label("utf-8".as_bytes());

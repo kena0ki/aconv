@@ -51,40 +51,55 @@ pub struct Opt {
 }
 
 impl Opt {
-    pub fn version_mut(self: &mut Self) -> &mut bool {
-        return &mut self.version;
+    pub fn new() -> Self {
+        let mut opt = Opt::default();
+        opt.chars_to_guess = 100;
+        opt.to_code = "UTF-8".into();
+        return opt;
+    }
+    pub fn version(mut self: Self, version: bool) -> Self {
+        self.version = version;
+        return self;
     }
 
-    pub fn to_code_mut(self: &mut Self) -> &mut String {
-        return &mut self.to_code;
+    pub fn to_code(mut self: Self, to_code: &str) -> Self {
+        self.to_code = to_code.into();
+        return self;
     }
 
-    pub fn output_mut(self: &mut Self) -> &mut Option<PathBuf> {
-        return &mut self.output;
+    pub fn output(mut self: Self, output: Option<PathBuf>) -> Self {
+        self.output = output;
+        return self;
     }
 
-    pub fn list_mut(self: &mut Self) -> &mut bool {
-        return &mut self.list;
+    pub fn list(mut self: Self, list: bool) -> Self {
+        self.list = list;
+        return self;
     }
 
-    pub fn non_text_threshold_mut(self: &mut Self) -> &mut u8 {
-        return &mut self.non_text_threshold;
+    pub fn non_text_threshold(mut self: Self, non_text_threshold: u8) -> Self {
+        self.non_text_threshold = non_text_threshold;
+        return self;
     }
 
-    pub fn chars_to_guess_mut(self: &mut Self) -> &mut usize {
-        return &mut self.chars_to_guess;
+    pub fn chars_to_guess(mut self: Self, chars_to_guess: usize) -> Self {
+        self.chars_to_guess = chars_to_guess;
+        return self;
     }
 
-    pub fn show_mut(self: &mut Self) -> &mut bool {
-        return &mut self.show;
+    pub fn show(mut self: Self, show: bool) -> Self {
+        self.show = show;
+        return self;
     }
 
-    pub fn quiet_mut(self: &mut Self) -> &mut bool {
-        return &mut self.quiet;
+    pub fn quiet(mut self: Self, quiet: bool) -> Self {
+        self.quiet = quiet;
+        return self;
     }
 
-    pub fn paths_mut(self: &mut Self) -> &mut Vec<PathBuf> {
-        return &mut self.paths;
+    pub fn paths(mut self: Self, paths: Vec<PathBuf>) -> Self {
+        self.paths = paths;
+        return self;
     }
 }
 

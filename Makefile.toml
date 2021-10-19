@@ -10,10 +10,13 @@
 #  https://marco-c.github.io/2020/11/24/rust-source-based-code-coverage.html
 #
 
+[config]
+default_to_workspace = false
+
 [tasks.clean-profraw]
 script_runner = "@duckscript"
 script = '''
-files = glob_array ./*.profraw
+files = glob_array ./**/*.profraw
 for f in ${files}
   rm ${f}
 end
@@ -38,6 +41,12 @@ extend = "test"
 toolchain = "nightly"
 env = { LLVM_PROFILE_FILE="your_name-%p-%m.profraw" }
 dependencies = ["build-cov"]
+args = [
+  "test",
+  "${@}",
+  "--",
+  "--nocapture",
+]
 
 # Overwrites the tasks.coverage setting in the built-in settings file:
 #  https://github.com/sagiegurari/cargo-make/blob/ee4e8b40319532079750d26c7d2415c0c6fbc306/src/lib/descriptor/makefiles/rust-coverage.toml
@@ -48,6 +57,9 @@ category = "Test"
 script_runner = "@shell"
 script = "RUSTUP_TOOLCHAIN=nightly grcov . --binary-path ./target/debug -s . -t html --branch --ignore-not-existing -o ./target/debug/coverage/"
 dependencies = ["test-cov"]
+
+[tasks.cov]
+alias = "coverage"
 
 # Extends the setting in the built-in settings file:
 #  https://github.com/sagiegurari/cargo-make/blob/ee4e8b40319532079750d26c7d2415c0c6fbc306/src/lib/descriptor/makefiles/rust.toml#L411

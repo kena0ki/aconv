@@ -18,6 +18,10 @@ pub fn transcode(reader: &mut dyn io::Read, writer: &mut dyn io::Write, encoding
         let eof = second_size == 0;
         (buf_guess, eof)
     };
+    if buf_guess.len() == 0 { // empty file
+        writer.write_all(&buf_guess).map_err(map_write_err)?;
+        return Ok(enc::UTF_8);
+    }
     let transcoder = &mut tc::Transcoder::new_with_buff_size(None, encoding, 10 * 1024).unwrap();
     let num_read = {
         let rslt = transcoder.guess_and_transcode(&mut buf_guess, output_buffer, opt.chars_to_guess, opt.non_text_threshold, eof);
@@ -112,9 +116,8 @@ mod tests {
         ($name:ident, $input_file:expr, $expected_file:expr, $enc:expr) => {
             #[test]
             fn $name() {
-                let mut opt = super::option::Opt::default();
-                *(opt.chars_to_guess_mut()) = 100;
-                let test_data = path::Path::new("test_data/transcode");
+                let opt = super::option::Opt::new();
+                let test_data = path::Path::new("test_data");
                 let ifile_handle = &mut std::fs::File::open(test_data.join($input_file)).unwrap();
                 let enc = super::enc::Encoding::for_label($enc.as_bytes()).unwrap_or(&super::enc::UTF_8_INIT);
                 let output = &mut Vec::with_capacity(20*1024);
