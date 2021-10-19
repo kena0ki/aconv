@@ -42,7 +42,6 @@ impl<'a> Transcoder {
     pub fn transcode(self: &mut Self, src: &[u8], dst: &mut [u8], last: bool) -> (enc::CoderResult, usize, usize) {
         let decoder = self.decoder.as_mut().expect("transcode() should be called after the source encoding is detected.");
         if self.dst_encoding == enc::UTF_8 {
-            println!("no encoding");
             let (result, num_decoder_read, num_decoder_written, _) = decoder.decode_to_utf8(src, dst, last);
             return (result, num_decoder_read, num_decoder_written);
         } else if self.dst_encoding == enc::UTF_16BE || self.dst_encoding == enc::UTF_16LE {
@@ -59,7 +58,6 @@ impl<'a> Transcoder {
                 str::from_utf8_unchecked(&self.unencoded_bytes)
             };
             let encoder = self.encoder.as_mut().unwrap();
-            println!("decoded: {:?}", encoder_input);
             let (encoder_result, num_encoder_read, num_encoder_written, _) =
                 encoder.encode_from_utf8(encoder_input, dst, last);
             self.unencoded_bytes = self.unencoded_bytes[num_encoder_read..].to_vec();
@@ -98,14 +96,11 @@ impl<'a> Transcoder {
                         }
                     }
                 }
-                println!("non ascii count: {:?}", non_ascii_cnt);
-                println!("number of fed bytes: {:?}", num_fed);
                 let top_level_domain = None;
                 let allow_utf8 = true;
                 self.detector.guess(top_level_domain, allow_utf8).new_decoder()
             },
         };
-        println!("guessed decoder: {:?}", decoder.encoding());
         let (coder_result, decoder_read, decoder_written)
             = Transcoder::try_transcode(self, &mut decoder, eof, src, dst, non_text_limit)?;
         self.src_encoding = Some(decoder.encoding());
@@ -129,7 +124,6 @@ impl<'a> Transcoder {
         let auto_detection_failed = if 0 < decode_buffer_str.chars().count() {
             for c in decode_buffer_str.chars() {
                 if Transcoder::is_non_text(&c) {
-                    println!("non text: {:?}", c);
                     non_text_cnt+=1;
                 }
             }
@@ -144,7 +138,6 @@ impl<'a> Transcoder {
             return Ok((decoder_result, num_decoder_read, num_decoder_written));
         }
         if self.dst_encoding == enc::UTF_16BE || self.dst_encoding == enc::UTF_16LE {
-            println!("decode_to_utf16");
             self.decoder = Some(decoder.encoding().new_decoder()); // the decoder was used once to check the guess result, so we need a new one.
             let new_decoder = self.decoder.as_mut().unwrap();
             let dst_u16 = &mut vec![0u16; dst.len()/2];
@@ -190,8 +183,6 @@ impl<'a> Transcoder {
     }
 
     fn u16_to_u8(src: &[u16], dst: &mut [u8], src_length: usize, is_be: bool) {
-        log::debug!("{}",src_length);
-        println!("{}",src_length);
         let to_bytes = if is_be {
             |src| u16::to_be_bytes(src)
         } else {
@@ -222,7 +213,6 @@ mod tests {
                 let enc = super::enc::Encoding::for_label($enc.as_bytes());
                 let t = &mut super::Transcoder::new(None, enc.unwrap());
                 let output_bytes = &mut [0u8; 1024];
-                // println!("{:x?}", &input_bytes[..15]);
                 match t.guess_and_transcode(input_bytes, output_bytes, 100, 5, false) {
                     Ok((_, _, num_written)) => {
                         let efile_handle = &mut std::fs::File::open(test_data.join($expected_file)).unwrap();
@@ -279,14 +269,11 @@ mod tests {
             #[test]
             fn $name() {
                 let dec = super::enc::Encoding::for_label($dec.as_bytes());
-                println!("decoder: {:?}", dec.unwrap());
                 let enc = super::enc::Encoding::for_label($enc.as_bytes());
-                println!("encoder: {:?}", enc.unwrap());
                 let mut t = super::Transcoder::new(dec, enc.unwrap());
                 // let output = &mut [0u8; 14]; // encoder seems to need at least 14 bytes
                 let output = &mut [0u8; 140]; // encoder seems to need at least 14 bytes
                 let (_,_,written) = t.transcode($srcbytes, output, false);
-                println!("written: {}",written);
                 assert_eq!($dst, &output[..written]);
             }
         };

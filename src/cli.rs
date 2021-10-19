@@ -12,6 +12,9 @@ pub fn dispatch(opt: &option::Opt) -> Result<(), error::Error> {
     if opt.list {
         list();
         return Ok(());
+    } else if opt.version {
+        version();
+        return Ok(());
     } else {
         return run(opt);
     }
@@ -107,14 +110,14 @@ fn traverse(writer_opt: &mut Option<&mut dyn io::Write>, to_code: &'static enc::
             let out_path = &dir_path.join(in_path.file_name().unwrap());
             ofile =fs::File::create(out_path)
                 .map_err(|e| error::Error::Io { source: e, path: out_path.to_owned(), message: "Error creating the file".into() })?;
-            println!("ofile: {:?}", ofile);
+            log::debug!("ofile: {:?}", ofile);
             &mut ofile
         } else {
             writer_opt.as_mut().unwrap()
         };
         let reader = &mut fs::File::open(in_path)
             .map_err(|e| error::Error::Io { source: e, path: in_path.to_owned(), message: "Error opening the file".into() })?;
-        println!("output buffer length: {}", output_buffer.len());
+        log::debug!("output buffer length: {}", output_buffer.len());
         let rslt = transcode::transcode(reader, writer, to_code, input_buffer, output_buffer, &opt);
         match rslt {
             Ok(enc) => {
@@ -168,6 +171,10 @@ fn list() {
     println!();
 }
 
+fn version() {
+    println!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -175,39 +182,78 @@ mod tests {
     #[test]
     fn dir_to_dir() {
         let opt = &mut option::Opt::new()
-            .paths(vec![path::PathBuf::from("test_data/child")])
+            .paths(vec![path::PathBuf::from("test_data/dir_to_dir")])
             .output(Some(path::PathBuf::from("output")));
-        run(opt).unwrap();
+        dispatch(opt).unwrap();
     }
 
     #[test]
     fn files_to_dir() {
         let opt = &mut option::Opt::new()
-            .paths(vec![path::PathBuf::from("test_data/child")])
+            .paths(vec![path::PathBuf::from("test_data/files_to_dir")])
             .output(Some(path::PathBuf::from("output")));
-        run(opt).unwrap();
+        dispatch(opt).unwrap();
     }
 
     #[test]
-    fn to_sjis() {
+    fn to_code() {
         let opt = &mut option::Opt::new()
-            .paths(vec![path::PathBuf::from("test_data/utf8_ja.txt")])
-            .to_code("sjis");
-        run(opt).unwrap();
+            .paths(vec![path::PathBuf::from("test_data/to_code/sjis.txt")])
+            .chars_to_guess(20)
+            .to_code("utf8");
+        dispatch(opt).unwrap();
     }
 
     #[test]
-    fn to_list() {
+    fn list() {
         let opt = &mut option::Opt::new()
             .list(true);
-        run(opt).unwrap();
+        dispatch(opt).unwrap();
     }
 
     #[test]
-    fn to_show() {
+    fn show() {
         let opt = &mut option::Opt::new()
+            .paths(vec![path::PathBuf::from("test_data/files_to_dir")])
             .show(true);
-        run(opt).unwrap();
+        dispatch(opt).unwrap();
+    }
+
+    #[test]
+    fn version() {
+        let opt = &mut option::Opt::new()
+            .version(true);
+        dispatch(opt).unwrap();
+    }
+
+    #[test]
+    fn error_noent() {
+        let opt = &mut option::Opt::new()
+            .paths(vec![path::PathBuf::from("foo")]);
+        dispatch(opt).unwrap_err();
+    }
+
+    #[test]
+    fn threshold() {
+        let opt = &mut option::Opt::new()
+            .paths(vec![path::PathBuf::from("test_data/threshold/threshold.txt")])
+            .non_text_threshold(50);
+        dispatch(opt).unwrap();
+    }
+
+    #[test]
+    fn error_guess() {
+        let opt = &mut option::Opt::new()
+            .paths(vec![path::PathBuf::from("test_data/error_guess/nullchars.txt")]);
+        dispatch(opt).unwrap_err();
+    }
+
+    #[test]
+    fn error_guess_quiet() {
+        let opt = &mut option::Opt::new()
+            .paths(vec![path::PathBuf::from("test_data/error_guess/nullchars.txt")])
+            .quiet(true);
+        dispatch(opt).unwrap_err();
     }
 }
 

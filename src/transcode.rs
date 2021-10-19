@@ -26,7 +26,7 @@ pub fn transcode(reader: &mut dyn io::Read, writer: &mut dyn io::Write, encoding
     let num_read = {
         let rslt = transcoder.guess_and_transcode(&mut buf_guess, output_buffer, opt.chars_to_guess, opt.non_text_threshold, eof);
         match rslt {
-            Ok((_, num_read, num_written)) => {
+            Ok((result, num_read, num_written)) => {
                 let src_enc = transcoder.src_encoding().unwrap();
                 if opt.show {
                     return Ok(src_enc);
@@ -46,6 +46,9 @@ pub fn transcode(reader: &mut dyn io::Read, writer: &mut dyn io::Write, encoding
                 }
                 // write transcoded bytes in buffer
                 writer.write_all(&output_buffer[..num_written]).map_err(map_write_err)?;
+                if result == enc::CoderResult::InputEmpty && eof == true {
+                    return Ok(src_enc);
+                }
                 num_read
             },
             Err(err) => {
@@ -58,7 +61,7 @@ pub fn transcode(reader: &mut dyn io::Read, writer: &mut dyn io::Write, encoding
     };
 
     // decode rest of bytes in buffer
-    transcode_buffer_and_write(writer, transcoder, &buf_guess[num_read..], output_buffer, false)?;
+    transcode_buffer_and_write(writer, transcoder, &buf_guess[num_read..], output_buffer, eof)?;
 
     // decode bytes remaining in file
     transcode_file_and_write(reader, writer, transcoder, input_buffer, output_buffer)?;

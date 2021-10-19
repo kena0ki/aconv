@@ -6,7 +6,7 @@ use std::path::PathBuf;
 /// If the auto-detection is considered it failed, the input texts are output as-is,
 /// meaning no conversion takes place, with an error message emitted.
 #[derive(StructOpt, Debug, Default)]
-#[structopt(name = "8fy", verbatim_doc_comment)] // TODO name
+#[structopt(verbatim_doc_comment, version=env!("CARGO_PKG_VERSION"))]
 pub struct Opt {
     /// Prints version info and exit.
     #[structopt(short, long)]
