@@ -77,16 +77,17 @@ fn run(opt: &option::Opt) -> Result<(), error::Error> {
             }
         }
         for i in 0..in_paths.len() {
-            let in_path = &fs::canonicalize(&in_paths[i])
-                .map_err(|e| error::Error::Io { source: e, path: in_paths[i].to_owned(), message: "Error reading the file or directory".into() })?;
-            traverse(&mut writer, to_code, input_buffer, output_buffer, in_path, dir_opt ,opt)?;
+            let in_path = &in_paths[i];
+            let in_path_can = &fs::canonicalize(&in_path)
+                .map_err(|e| error::Error::Io { source: e, path: in_path.to_owned(), message: "Error reading the file or directory".into() })?;
+            traverse(&mut writer, to_code, input_buffer, output_buffer, in_path, dir_opt, in_path, in_path_can, opt)?;
         }
         return Ok(());
     }
 }
 
 fn traverse(writer_opt: &mut Option<&mut dyn io::Write>, to_code: &'static enc::Encoding, input_buffer: &mut [u8], output_buffer: &mut [u8]
-    , in_path: &path::PathBuf, dir_opt: Option<&path::PathBuf>, opt: &option::Opt)
+    , in_path: &path::PathBuf, dir_opt: Option<&path::PathBuf>, in_root: &path::PathBuf, in_root_can: &path::PathBuf, opt: &option::Opt)
     -> Result<(), error::Error> {
     if in_path.is_dir() {
         let dir_ent = fs::read_dir(in_path)
@@ -97,9 +98,9 @@ fn traverse(writer_opt: &mut Option<&mut dyn io::Write>, to_code: &'static enc::
             let child_path = &c.path();
             if let Some(current_out_dir) = dir_opt {
                 let out_dir = &current_out_dir.join(in_path.file_name().unwrap());
-                traverse(&mut None, to_code, input_buffer, output_buffer, child_path, Some(out_dir), opt)?;
+                traverse(&mut None, to_code, input_buffer, output_buffer, child_path, Some(out_dir), in_root, in_root_can, opt)?;
             } else {
-                traverse(writer_opt, to_code, input_buffer, output_buffer, child_path, None, opt)?;
+                traverse(writer_opt, to_code, input_buffer, output_buffer, child_path, None, in_root, in_root_can, opt)?;
             }
         }
         return Ok(());
@@ -110,19 +111,22 @@ fn traverse(writer_opt: &mut Option<&mut dyn io::Write>, to_code: &'static enc::
             let out_path = &dir_path.join(in_path.file_name().unwrap());
             ofile =fs::File::create(out_path)
                 .map_err(|e| error::Error::Io { source: e, path: out_path.to_owned(), message: "Error creating the file".into() })?;
-            log::debug!("ofile: {:?}", ofile);
             &mut ofile
         } else {
             writer_opt.as_mut().unwrap()
         };
         let reader = &mut fs::File::open(in_path)
             .map_err(|e| error::Error::Io { source: e, path: in_path.to_owned(), message: "Error opening the file".into() })?;
-        log::debug!("output buffer length: {}", output_buffer.len());
         let rslt = transcode::transcode(reader, writer, to_code, input_buffer, output_buffer, &opt);
         match rslt {
             Ok(enc) => {
                 if opt.show {
-                    println!("{}: {}", in_path.to_string_lossy(), enc.name());
+                    let path = if let Ok(p) = in_path.strip_prefix(in_root_can) {
+                        in_root.join(p)
+                    } else {
+                        in_path.into()
+                    };
+                    println!("{}: {}", path.to_string_lossy(), enc.name());
                 }
                 return Ok(());
             },

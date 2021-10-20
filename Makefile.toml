@@ -45,8 +45,6 @@ args = [
   "test",
   "--workspace",
   "${@}",
-  "--",
-  "--nocapture",
 ]
 
 # Overwrites the tasks.coverage setting in the built-in settings file:

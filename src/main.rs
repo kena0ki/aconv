@@ -3,9 +3,7 @@ use aconv::option;
 use aconv::cli;
 
 fn main() -> () {
-    env_logger::init();
     let opt: option::Opt = StructOpt::from_args();
-    log::debug!("{:?}", opt);
     match cli::dispatch(&opt) {
         Err(err) => {
             if ! err.is_guess() {

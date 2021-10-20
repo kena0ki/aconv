@@ -1,0 +1,19 @@
+---
+source: tests/cli.rs
+expression: output.stdout
+
+---
+[
+    97,
+    99,
+    111,
+    110,
+    118,
+    32,
+    48,
+    46,
+    49,
+    46,
+    48,
+    10,
+]
