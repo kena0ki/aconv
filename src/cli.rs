@@ -3,7 +3,7 @@ use crate::transcode;
 use crate::error;
 
 use encoding_rs as enc;
-use transcoding_rs::constants;
+use transcoding_rs as tc;
 use std::io;
 use std::fs;
 use std::path;
@@ -166,10 +166,10 @@ fn create_dir_recursive(path: &path::PathBuf)
 }
 
 fn list() {
-    print!("{}", constants::ENCODINGS[0].1);
-    for i in 1..constants::ENCODINGS.len() {
-        let encoding = constants::ENCODINGS[i];
-        if constants::ENCODINGS[i-1].0 == encoding.0 {
+    print!("{}", tc::ENCODINGS[0].1);
+    for i in 1..tc::ENCODINGS.len() {
+        let encoding = tc::ENCODINGS[i];
+        if tc::ENCODINGS[i-1].0 == encoding.0 {
             print!(" ");
         } else {
             println!();

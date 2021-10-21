@@ -1,8 +1,10 @@
-pub mod constants;
+mod constants;
 
 use encoding_rs as enc;
 use chardetng as cd;
 use std::str;
+
+pub use constants::ENCODINGS;
 
 pub struct Transcoder {
     src_encoding: Option<&'static enc::Encoding>,
