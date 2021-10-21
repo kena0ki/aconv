@@ -26,7 +26,7 @@ pub fn transcode(reader: &mut dyn io::Read, writer: &mut dyn io::Write, encoding
     let num_read = {
         let rslt = transcoder.guess_and_transcode(&mut buf_guess, output_buffer, opt.chars_to_guess, opt.non_text_threshold, eof);
         match rslt {
-            Ok((result, num_read, num_written)) => {
+            Ok((result, num_read, num_written, _)) => {
                 let src_enc = transcoder.src_encoding().unwrap();
                 if opt.show {
                     return Ok(src_enc);
@@ -91,7 +91,7 @@ fn transcode_buffer_and_write(writer: &mut dyn io::Write, transcoder: &mut tc::T
         return Ok(());
     }
     loop {
-        let (result, num_transcoder_read, num_transcoder_written)
+        let (result, num_transcoder_read, num_transcoder_written, _)
             = transcoder.transcode(&src[transcoder_input_start..], output_buffer, eof);
         transcoder_input_start+=num_transcoder_read;
         writer.write_all(&output_buffer[..num_transcoder_written]).map_err(map_write_err)?;

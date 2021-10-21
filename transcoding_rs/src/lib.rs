@@ -39,26 +39,26 @@ impl<'a> Transcoder {
             unencoded_bytes: Vec::with_capacity(8*1024),
         });
     }
-    pub fn transcode(self: &mut Self, src: &[u8], dst: &mut [u8], last: bool) -> (enc::CoderResult, usize, usize) {
+    pub fn transcode(self: &mut Self, src: &[u8], dst: &mut [u8], last: bool) -> (enc::CoderResult, usize, usize, bool) {
         let decoder = self.decoder.as_mut().expect("transcode() should be called after the source encoding is detected.");
         if self.dst_encoding == enc::UTF_8 {
-            let (result, num_decoder_read, num_decoder_written, _) = decoder.decode_to_utf8(src, dst, last);
-            return (result, num_decoder_read, num_decoder_written);
+            let (result, num_decoder_read, num_decoder_written, has_replacement) = decoder.decode_to_utf8(src, dst, last);
+            return (result, num_decoder_read, num_decoder_written, has_replacement);
         } else if self.dst_encoding == enc::UTF_16BE || self.dst_encoding == enc::UTF_16LE {
             let dst_u16 = &mut vec![0u16; dst.len()/2];
-            let (result, num_decoder_read, num_decoder_written, _) =
+            let (result, num_decoder_read, num_decoder_written, has_replacement) =
                 decoder.decode_to_utf16(src, dst_u16, last);
             Transcoder::u16_to_u8(dst_u16, dst, num_decoder_written, self.dst_encoding == enc::UTF_16BE);
-            return (result, num_decoder_read, num_decoder_written*2);
+            return (result, num_decoder_read, num_decoder_written*2, has_replacement);
         } else {
-            let (decoder_result, num_decoder_read, num_decoder_written, _) =
+            let (decoder_result, num_decoder_read, num_decoder_written, has_replacement) =
                 decoder.decode_to_utf8(src, &mut self.decode_buffer, last);
             self.unencoded_bytes.append(&mut self.decode_buffer[..num_decoder_written].to_vec());
             let encoder_input = unsafe {
                 str::from_utf8_unchecked(&self.unencoded_bytes)
             };
             let encoder = self.encoder.as_mut().unwrap();
-            let (encoder_result, num_encoder_read, num_encoder_written, _) =
+            let (encoder_result, num_encoder_read, num_encoder_written, has_unmappable) =
                 encoder.encode_from_utf8(encoder_input, dst, last);
             self.unencoded_bytes = self.unencoded_bytes[num_encoder_read..].to_vec();
             let result = if decoder_result == enc::CoderResult::InputEmpty && encoder_result == enc::CoderResult::InputEmpty {
@@ -66,12 +66,12 @@ impl<'a> Transcoder {
             } else {
                 enc::CoderResult::OutputFull
             };
-            return (result, num_decoder_read, num_encoder_written);
+            return (result, num_decoder_read, num_encoder_written, has_replacement || has_unmappable);
         }
     }
 
     pub fn guess_and_transcode(self: &mut Self, src: &mut [u8], dst: & mut [u8], chars_to_guess: usize, non_text_threshold: u8, eof: bool)
-        -> Result<(enc::CoderResult, usize, usize), String> {
+        -> Result<(enc::CoderResult, usize, usize, bool), String> {
 
         let mut detector = cd::EncodingDetector::new();
 
@@ -103,22 +103,22 @@ impl<'a> Transcoder {
                 detector.guess(top_level_domain, allow_utf8).new_decoder()
             },
         };
-        let (coder_result, decoder_read, decoder_written)
+        let (coder_result, decoder_read, decoder_written, has_replacement)
             = Transcoder::try_transcode(self, &mut decoder, eof, src, dst, non_text_threshold)?;
         self.src_encoding = Some(decoder.encoding());
         self.decoder = Some(decoder);
-        return Ok((coder_result, decoder_read, decoder_written));
+        return Ok((coder_result, decoder_read, decoder_written, has_replacement));
     }
 
 
     fn try_transcode(self: &mut Self, decoder: &mut enc::Decoder, eof: bool, src: &[u8], dst: &mut [u8], non_text_threshold: u8)
-        -> Result<(enc::CoderResult, usize, usize), String> {
+        -> Result<(enc::CoderResult, usize, usize, bool), String> {
         let decode_buffer = if self.dst_encoding == enc::UTF_8 {
             &mut (*dst)
         } else {
             &mut self.decode_buffer
         };
-        let (decoder_result, num_decoder_read, num_decoder_written, _) = decoder.decode_to_utf8(src, decode_buffer, eof);
+        let (decoder_result, num_decoder_read, num_decoder_written, has_replacement) = decoder.decode_to_utf8(src, decode_buffer, eof);
         let decode_buffer_str = unsafe{
             str::from_utf8_unchecked_mut(&mut decode_buffer[..num_decoder_written])
         };
@@ -137,23 +137,23 @@ impl<'a> Transcoder {
             return Err("Auto-detection seems to fail.".into());
         }
         if self.dst_encoding == enc::UTF_8 {
-            return Ok((decoder_result, num_decoder_read, num_decoder_written));
+            return Ok((decoder_result, num_decoder_read, num_decoder_written, has_replacement));
         }
         if self.dst_encoding == enc::UTF_16BE || self.dst_encoding == enc::UTF_16LE {
             self.decoder = Some(decoder.encoding().new_decoder()); // the decoder was used once to check the guess result, so we need a new one.
             let new_decoder = self.decoder.as_mut().unwrap();
             let dst_u16 = &mut vec![0u16; dst.len()/2];
-            let (result, num_decoder_read, num_decoder_written, _) =
+            let (result, num_decoder_read, num_decoder_written, has_replacement) =
                 new_decoder.decode_to_utf16(src, dst_u16, eof);
             Transcoder::u16_to_u8(dst_u16, dst, num_decoder_written, self.dst_encoding == enc::UTF_16BE);
-            return Ok((result, num_decoder_read, num_decoder_written*2));
+            return Ok((result, num_decoder_read, num_decoder_written*2, has_replacement));
         } else {
             self.unencoded_bytes.append(&mut decode_buffer[..num_decoder_written].to_vec());
             let encoder_input = unsafe {
                 str::from_utf8_unchecked(&self.unencoded_bytes)
             };
             let encoder = self.encoder.as_mut().unwrap();
-            let (encoder_result, num_encoder_read, num_encoder_written, _) =
+            let (encoder_result, num_encoder_read, num_encoder_written, has_unmappable) =
                 encoder.encode_from_utf8(encoder_input, dst, eof);
             self.unencoded_bytes = self.unencoded_bytes[num_encoder_read..].to_vec();
             let coder_result = if decoder_result == enc::CoderResult::InputEmpty && encoder_result == enc::CoderResult::InputEmpty {
@@ -161,7 +161,7 @@ impl<'a> Transcoder {
             } else {
                 enc::CoderResult::OutputFull
             };
-            return Ok((coder_result, num_decoder_read, num_encoder_written));
+            return Ok((coder_result, num_decoder_read, num_encoder_written, has_replacement || has_unmappable));
         }
     }
 
@@ -216,7 +216,7 @@ mod tests {
                 let t = &mut super::Transcoder::new(None, enc.unwrap());
                 let output_bytes = &mut [0u8; 1024];
                 match t.guess_and_transcode(input_bytes, output_bytes, 100, 5, false) {
-                    Ok((_, _, num_written)) => {
+                    Ok((_, _, num_written, _)) => {
                         let efile_handle = &mut std::fs::File::open(test_data.join($expected_file)).unwrap();
                         let expected_string = &mut Vec::new();
                         efile_handle.read_to_end(expected_string).unwrap();
@@ -275,7 +275,7 @@ mod tests {
                 let mut t = super::Transcoder::new(dec, enc.unwrap());
                 // let output = &mut [0u8; 14]; // encoder seems to need at least 14 bytes
                 let output = &mut [0u8; 140]; // encoder seems to need at least 14 bytes
-                let (_,_,written) = t.transcode($srcbytes, output, false);
+                let (_,_,written,_) = t.transcode($srcbytes, output, false);
                 assert_eq!($dst, &output[..written]);
             }
         };
