@@ -47,23 +47,27 @@ impl <R: std::io::Read> TranscodingReader<R> {
     }
 
     pub fn guess(self: &mut Self)
-        -> Result<&'static enc::Encoding, Box<dyn std::error::Error>> {
+        -> std::io::Result<(Option<&'static enc::Encoding>, usize)> {
+        // TODO guess done
         let src = &mut vec![0u8; self.bytes_to_guess];
         let buf_minus1 =src.len()-1;
-        let mut n = self.reader.read(&mut src[..buf_minus1])?;
-        self.eof = false;
-        if src.len() == n {
-            self.reader.read(&mut src[buf_minus1..])?;
-            n+=1;
-            self.eof=true;
+        let first = self.reader.read(&mut src[..buf_minus1])?;
+        if first == 0 {
+            self.eof = true;
+            self.transcode_done = true;
+            return Ok((None, 0));
         }
-        let rslt = self.transcoder.guess_and_transcode(&src[..n], &mut self.buffer, self.non_ascii_to_guess, self.non_text_threshold, self.eof)?;
-        let (coder_result, num_read, num_written, has_replacement) = rslt;
+        let second = self.reader.read(&mut src[buf_minus1..])?;
+        self.eof = second == 0;
+        let n = first +second;
+        // TODO new transcoder
+        let rslt = self.transcoder.guess_and_transcode(&src[..n], &mut self.buffer, self.non_ascii_to_guess, self.non_text_threshold, self.eof);
+        let (guessed_enc, coder_result, num_read, num_written, has_replacement) = rslt;
         self.unread_buffer = src[num_read..].to_vec();
         self.unwritten_buffer = self.buffer[..num_written].to_vec();
         self.transcode_done = (coder_result == enc::CoderResult::InputEmpty) && self.eof;
         self.had_replacement_or_unmappable = has_replacement;
-        return Ok(self.transcoder.src_encoding.unwrap());
+        return Ok((guessed_enc, num_read));
     }
 
     fn copy_from_unwritten_buffer(self: &mut Self, buffer: &mut [u8]) -> usize{

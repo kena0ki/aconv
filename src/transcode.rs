@@ -23,42 +23,39 @@ pub fn transcode(reader: &mut dyn io::Read, writer: &mut dyn io::Write, encoding
         return Ok(enc::UTF_8);
     }
     let transcoder = &mut tc::Transcoder::new(None, encoding).buffer_size(10 * 1024);
-    let num_read = {
-        let rslt = transcoder.guess_and_transcode(&mut buf_guess, output_buffer, opt.chars_to_guess, opt.non_text_threshold, eof);
-        match rslt {
-            Ok((result, num_read, num_written, _)) => {
-                let src_enc = transcoder.src_encoding().unwrap();
-                if opt.show {
-                    return Ok(src_enc);
-                }
-                let should_not_transcode = transcoder.src_encoding().unwrap() == transcoder.dst_encoding();
-                if should_not_transcode {
-                    // write input to output as-is
-                    writer.write_all(&buf_guess).map_err(map_write_err)?;
-                    io::copy(reader, writer).map(|_| ()).map_err(map_write_err)?;
-                    return Ok(transcoder.src_encoding().unwrap());
-                }
-                if transcoder.dst_encoding() == enc::UTF_16BE && [0xFE,0xFF] != output_buffer[..2] {
-                    writer.write_all(b"\xFE\xFF").map_err(map_write_err)?; // add a BOM
-                }
-                if transcoder.dst_encoding() == enc::UTF_16LE && [0xFF,0xFE] != output_buffer[..2] {
-                    writer.write_all(b"\xFF\xFE").map_err(map_write_err)?; // add a BOM
-                }
-                // write transcoded bytes in buffer
-                writer.write_all(&output_buffer[..num_written]).map_err(map_write_err)?;
-                if result == enc::CoderResult::InputEmpty && eof == true {
-                    return Ok(src_enc);
-                }
-                num_read
-            },
-            Err(err) => {
+    let (guessed_enc_opt, coder_result, num_read, num_written, _)
+        = transcoder.guess_and_transcode(&mut buf_guess, output_buffer, opt.chars_to_guess, opt.non_text_threshold, eof);
+    match guessed_enc_opt {
+        Some(guessed_enc) => {
+            if opt.show {
+                return Ok(guessed_enc);
+            }
+            let should_not_transcode = guessed_enc == transcoder.dst_encoding();
+            if should_not_transcode {
                 // write input to output as-is
                 writer.write_all(&buf_guess).map_err(map_write_err)?;
                 io::copy(reader, writer).map(|_| ()).map_err(map_write_err)?;
-                return Err(error::TranscodeError::Guess(err));
-            },
+                return Ok(guessed_enc);
+            }
+            if transcoder.dst_encoding() == enc::UTF_16BE && [0xFE,0xFF] != output_buffer[..2] {
+                writer.write_all(b"\xFE\xFF").map_err(map_write_err)?; // add a BOM
+            }
+            if transcoder.dst_encoding() == enc::UTF_16LE && [0xFF,0xFE] != output_buffer[..2] {
+                writer.write_all(b"\xFF\xFE").map_err(map_write_err)?; // add a BOM
+            }
+            // write transcoded bytes in buffer
+            writer.write_all(&output_buffer[..num_written]).map_err(map_write_err)?;
+            if coder_result == enc::CoderResult::InputEmpty && eof == true {
+                return Ok(guessed_enc);
+            }
+        },
+        None => {
+            // write input to output as-is
+            writer.write_all(&buf_guess).map_err(map_write_err)?;
+            io::copy(reader, writer).map(|_| ()).map_err(map_write_err)?;
+            return Err(error::TranscodeError::Guess("Auto-detection seems to fail.".into()));
         }
-    };
+    }
 
     // decode rest of bytes in buffer
     transcode_buffer_and_write(writer, transcoder, &buf_guess[num_read..], output_buffer, eof)?;
@@ -66,7 +63,7 @@ pub fn transcode(reader: &mut dyn io::Read, writer: &mut dyn io::Write, encoding
     // decode bytes remaining in file
     transcode_file_and_write(reader, writer, transcoder, input_buffer, output_buffer)?;
 
-    return Ok(transcoder.src_encoding().unwrap());
+    return Ok(guessed_enc_opt.unwrap());
 }
 
 fn transcode_file_and_write(reader: &mut dyn io::Read,writer: &mut dyn io::Write, transcoder: &mut tc::Transcoder,

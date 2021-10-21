@@ -74,7 +74,7 @@ impl<'a> Transcoder {
     }
 
     pub fn guess_and_transcode(self: &mut Self, src: &[u8], dst: & mut [u8], chars_to_guess: usize, non_text_threshold: u8, eof: bool)
-        -> Result<(enc::CoderResult, usize, usize, bool), String> {
+        -> (Option<&'static enc::Encoding>, enc::CoderResult, usize, usize, bool) {
 
         let mut detector = cd::EncodingDetector::new();
 
@@ -106,16 +106,22 @@ impl<'a> Transcoder {
                 detector.guess(top_level_domain, allow_utf8).new_decoder()
             },
         };
-        let (coder_result, decoder_read, decoder_written, has_replacement)
-            = Transcoder::try_transcode(self, &mut decoder, eof, src, dst, non_text_threshold)?;
-        self.src_encoding = Some(decoder.encoding());
-        self.decoder = Some(decoder);
-        return Ok((coder_result, decoder_read, decoder_written, has_replacement));
+        let (ok, coder_result, decoder_read, decoder_written, has_replacement)
+            = Transcoder::try_transcode(self, &mut decoder, eof, src, dst, non_text_threshold);
+        if ok {
+            self.src_encoding = Some(decoder.encoding());
+            self.decoder = Some(decoder);
+            return (self.src_encoding, coder_result, decoder_read, decoder_written, has_replacement);
+        } else {
+            self.src_encoding = None;
+            self.decoder = None;
+            return (None, coder_result, decoder_read, decoder_written, has_replacement);
+        }
     }
 
 
     fn try_transcode(self: &mut Self, decoder: &mut enc::Decoder, eof: bool, src: &[u8], dst: &mut [u8], non_text_threshold: u8)
-        -> Result<(enc::CoderResult, usize, usize, bool), String> {
+        -> (bool, enc::CoderResult, usize, usize, bool) {
         let decode_buffer = if self.dst_encoding == enc::UTF_8 {
             &mut (*dst)
         } else {
@@ -137,10 +143,10 @@ impl<'a> Transcoder {
             true
         };
         if auto_detection_failed {
-            return Err("Auto-detection seems to fail.".into());
+            return (false, decoder_result, num_decoder_read, num_decoder_written, has_replacement);
         }
         if self.dst_encoding == enc::UTF_8 {
-            return Ok((decoder_result, num_decoder_read, num_decoder_written, has_replacement));
+            return (true, decoder_result, num_decoder_read, num_decoder_written, has_replacement);
         }
         if self.dst_encoding == enc::UTF_16BE || self.dst_encoding == enc::UTF_16LE {
             self.decoder = Some(decoder.encoding().new_decoder()); // the decoder was used once to check the guess result, so we need a new one.
@@ -149,7 +155,7 @@ impl<'a> Transcoder {
             let (result, num_decoder_read, num_decoder_written, has_replacement) =
                 new_decoder.decode_to_utf16(src, dst_u16, eof);
             Transcoder::u16_to_u8(dst_u16, dst, num_decoder_written, self.dst_encoding == enc::UTF_16BE);
-            return Ok((result, num_decoder_read, num_decoder_written*2, has_replacement));
+            return (true, result, num_decoder_read, num_decoder_written*2, has_replacement);
         } else {
             self.unencoded_bytes.append(&mut decode_buffer[..num_decoder_written].to_vec());
             let encoder_input = unsafe {
@@ -164,7 +170,7 @@ impl<'a> Transcoder {
             } else {
                 enc::CoderResult::OutputFull
             };
-            return Ok((coder_result, num_decoder_read, num_encoder_written, has_replacement || has_unmappable));
+            return (true, coder_result, num_decoder_read, num_encoder_written, has_replacement || has_unmappable);
         }
     }
 
@@ -218,15 +224,11 @@ mod tests {
                 let enc = super::enc::Encoding::for_label($enc.as_bytes());
                 let t = &mut super::Transcoder::new(None, enc.unwrap());
                 let output_bytes = &mut [0u8; 1024];
-                match t.guess_and_transcode(input_bytes, output_bytes, 100, 5, false) {
-                    Ok((_, _, num_written, _)) => {
-                        let efile_handle = &mut std::fs::File::open(test_data.join($expected_file)).unwrap();
-                        let expected_string = &mut Vec::new();
-                        efile_handle.read_to_end(expected_string).unwrap();
-                        assert_eq!(&expected_string[..num_written], &output_bytes[..num_written]);
-                    },
-                    Err(err) => panic!("{:?}",err),
-                }
+                let (_, _, _, num_written, _) = t.guess_and_transcode(input_bytes, output_bytes, 100, 5, false);
+                let efile_handle = &mut std::fs::File::open(test_data.join($expected_file)).unwrap();
+                let expected_string = &mut Vec::new();
+                efile_handle.read_to_end(expected_string).unwrap();
+                assert_eq!(&expected_string[..num_written], &output_bytes[..num_written]);
             }
         };
     }
@@ -263,10 +265,8 @@ mod tests {
         let enc = super::enc::Encoding::for_label("utf-8".as_bytes());
         let t = &mut super::Transcoder::new(None, enc.unwrap());
         let output = &mut [0u8; 1024];
-        match t.guess_and_transcode(input, output, 100, 0, false) {
-            Ok(ok) => panic!("{:?}", ok),
-            Err(_) => (),
-        }
+        let o =t.guess_and_transcode(input, output, 100, 0, false);
+        assert!(o.0.is_none());
     }
 
     macro_rules! transcode_test {
