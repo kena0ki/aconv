@@ -6,6 +6,121 @@ use std::str;
 
 pub use constants::ENCODINGS;
 
+pub struct TranscodingReader<R: std::io::Read> {
+    reader: R,
+    bytes_to_guess: usize,
+    non_ascii_to_guess: usize,
+    non_text_threshold: u8,
+    buffer: Vec<u8>,
+    unread_buffer: Vec<u8>,
+    unwritten_buffer: Vec<u8>,
+    transcoder: Transcoder,
+    had_replacement_or_unmappable: bool,
+}
+
+impl <R: std::io::Read> TranscodingReader<R> {
+    pub fn new(reader: R) -> Self {
+        return TranscodingReader {
+            bytes_to_guess: 1024,
+            non_ascii_to_guess: 100,
+            non_text_threshold: 0,
+            reader,
+            buffer: vec![0u8; 8*1024],
+            unread_buffer: vec![],
+            unwritten_buffer: vec![],
+            transcoder: Transcoder::new(None, enc::UTF_8),
+            had_replacement_or_unmappable: false,
+        };
+    }
+
+    pub fn guess(self: &mut Self)
+        -> Result<(&'static enc::Encoding, bool, bool), Box<dyn std::error::Error>> {
+        let src = &mut vec![0u8; self.bytes_to_guess];
+        let buf_minus1 =src.len()-1;
+        let mut n = self.reader.read(&mut src[..buf_minus1])?;
+        let mut eof=false;
+        if src.len() == n {
+            self.reader.read(&mut src[buf_minus1..])?;
+            n+=1;
+            eof=true;
+        }
+        let rslt = self.transcoder.guess_and_transcode(&src[..n], &mut self.buffer, self.non_ascii_to_guess, self.non_text_threshold, eof)?;
+        let (coder_result, num_read, num_written, has_replacement) = rslt;
+        self.unread_buffer = self.buffer[num_read..].to_vec();
+        self.unwritten_buffer = self.buffer[..num_written].to_vec();
+        let transcode_done = coder_result == enc::CoderResult::InputEmpty && eof;
+        return Ok((self.transcoder.src_encoding.unwrap(), transcode_done, has_replacement));
+    }
+
+    fn copy_from_written_buffer(self: &mut Self, buffer: &mut [u8]) -> usize{
+        let min = std::cmp::min(buffer.len(), self.unwritten_buffer.len());
+        buffer[..min].copy_from_slice(&self.unwritten_buffer[..min]);
+        self.unwritten_buffer = self.unwritten_buffer[min..].to_vec();
+        return min;
+    }
+
+    fn transcode(self: &mut Self, buffer: &mut[u8], from_unread: bool, eof: bool) -> usize {
+        let src = if from_unread {
+            &mut self.unread_buffer
+        } else {
+            &mut self.buffer
+        };
+
+        if buffer.len() > 16 { // buffer has enough bytes for encoding_rs to write output
+            let rslt = self.transcoder.transcode(src, buffer, eof);
+            let (_, num_read, num_written, has_replacement) = rslt;
+            self.unread_buffer = src[num_read..].to_vec();
+            self.had_replacement_or_unmappable = self.had_replacement_or_unmappable || has_replacement;
+            if num_written > 0 {
+                return num_written;
+            }
+        } else { // if the buffer is insufficient, let's create a buffer by ourselves
+                 // by doing so, we never get OutputFull from encoding_rs and that means we don't need to care about CoderResult.
+            let write_buffer = &mut [0u8; 8*1024];
+            let rslt = self.transcoder.transcode(src, write_buffer, eof);
+            let (_, num_read, num_written, has_replacement) = rslt;
+            self.unread_buffer = src[num_read..].to_vec();
+            self.unwritten_buffer = write_buffer[..num_written].to_vec();
+            self.had_replacement_or_unmappable = self.had_replacement_or_unmappable || has_replacement;
+            if num_written > 0 {
+                let n = self.copy_from_written_buffer(buffer);
+                return n;
+            }
+        }
+
+        return 0;
+    }
+}
+
+impl <R: std::io::Read> std::io::Read for TranscodingReader<R> {
+
+    fn read(self: &mut Self, buffer: &mut [u8]) -> std::io::Result<usize> {
+
+        if self.unwritten_buffer.len() > 0 {
+            let n = self.copy_from_written_buffer(buffer);
+            return Ok(n);
+        }
+
+        if self.unread_buffer.len() > 0 {
+            let num_written = self.transcode(buffer, true, false);
+            if num_written > 0 {
+                return Ok(0);
+            }
+        }
+
+        loop {
+            let n = self.reader.read(&mut self.buffer)?;
+            let eof = n == 0;
+            let num_written = self.transcode(buffer, false, eof);
+            if num_written > 0 {
+                return Ok(0);
+            } else if eof {
+                return Ok(0);
+            }
+        }
+    }
+}
+
 pub struct Transcoder {
     src_encoding: Option<&'static enc::Encoding>,
     dst_encoding: &'static enc::Encoding,
@@ -70,7 +185,7 @@ impl<'a> Transcoder {
         }
     }
 
-    pub fn guess_and_transcode(self: &mut Self, src: &mut [u8], dst: & mut [u8], chars_to_guess: usize, non_text_threshold: u8, eof: bool)
+    pub fn guess_and_transcode(self: &mut Self, src: &[u8], dst: & mut [u8], chars_to_guess: usize, non_text_threshold: u8, eof: bool)
         -> Result<(enc::CoderResult, usize, usize, bool), String> {
 
         let mut detector = cd::EncodingDetector::new();
