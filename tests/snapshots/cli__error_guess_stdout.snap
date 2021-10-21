@@ -3,5 +3,4 @@ source: tests/cli.rs
 expression: "std::str::from_utf8(&output.stdout).unwrap()"
 
 ---
-test_data/to_code/eucjp_to_sjis.txt: EUC-JP
-
+"a\u{0}b\u{0}c\u{0}d\u{0}e\u{0}"

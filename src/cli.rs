@@ -61,9 +61,10 @@ fn run(opt: &option::Opt) -> Result<(), error::Error> {
             },
             Err(err) => {
                 if let error::TranscodeError::Guess(msg) = &err {
-                    if ! opt.quiet {
-                        eprintln!("{}", msg);
+                    if opt.quiet {
+                        return Ok(());
                     }
+                    eprintln!("-: {}", msg);
                 }
                 return Err(err.into());
             }
@@ -118,15 +119,17 @@ fn traverse(writer_opt: &mut Option<&mut dyn io::Write>, to_code: &'static enc::
         let reader = &mut fs::File::open(in_path)
             .map_err(|e| error::Error::Io { source: e, path: in_path.to_owned(), message: "Error opening the file".into() })?;
         let rslt = transcode::transcode(reader, writer, to_code, input_buffer, output_buffer, &opt);
+        let relative_path = || {
+            if let Ok(p) = in_path.strip_prefix(in_root_can) {
+                in_root.join(p)
+            } else {
+                in_path.into()
+            }
+        };
         match rslt {
             Ok(enc) => {
                 if opt.show {
-                    let path = if let Ok(p) = in_path.strip_prefix(in_root_can) {
-                        in_root.join(p)
-                    } else {
-                        in_path.into()
-                    };
-                    println!("{}: {}", path.to_string_lossy(), enc.name());
+                    println!("{}: {}", relative_path().to_string_lossy(), enc.name());
                 }
                 return Ok(());
             },
@@ -138,9 +141,10 @@ fn traverse(writer_opt: &mut Option<&mut dyn io::Write>, to_code: &'static enc::
                     return Err(error::Error::Io { source, path: in_path.to_owned(), message: "Error writing the file".into() });
                 }
                 if let error::TranscodeError::Guess(msg) = &err {
-                    if ! opt.quiet {
-                        eprintln!("{}", msg);
+                    if opt.quiet {
+                        return Ok(());
                     }
+                    eprintln!("{}: {}", relative_path().to_string_lossy(), msg);
                 }
                 return Err(err.into());
             }
@@ -177,87 +181,5 @@ fn list() {
 
 fn version() {
     println!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn dir_to_dir() {
-        let opt = &mut option::Opt::new()
-            .paths(vec![path::PathBuf::from("test_data/dir_to_dir")])
-            .output(Some(path::PathBuf::from("output")));
-        dispatch(opt).unwrap();
-    }
-
-    #[test]
-    fn files_to_dir() {
-        let opt = &mut option::Opt::new()
-            .paths(vec![path::PathBuf::from("test_data/files_to_dir")])
-            .output(Some(path::PathBuf::from("output")));
-        dispatch(opt).unwrap();
-    }
-
-    #[test]
-    fn to_code() {
-        let opt = &mut option::Opt::new()
-            .paths(vec![path::PathBuf::from("test_data/to_code/sjis.txt")])
-            .chars_to_guess(20)
-            .to_code("utf8");
-        dispatch(opt).unwrap();
-    }
-
-    #[test]
-    fn list() {
-        let opt = &mut option::Opt::new()
-            .list(true);
-        dispatch(opt).unwrap();
-    }
-
-    #[test]
-    fn show() {
-        let opt = &mut option::Opt::new()
-            .paths(vec![path::PathBuf::from("test_data/files_to_dir")])
-            .show(true);
-        dispatch(opt).unwrap();
-    }
-
-    #[test]
-    fn version() {
-        let opt = &mut option::Opt::new()
-            .version(true);
-        dispatch(opt).unwrap();
-    }
-
-    #[test]
-    fn error_noent() {
-        let opt = &mut option::Opt::new()
-            .paths(vec![path::PathBuf::from("foo")]);
-        dispatch(opt).unwrap_err();
-    }
-
-    #[test]
-    fn threshold() {
-        let opt = &mut option::Opt::new()
-            .paths(vec![path::PathBuf::from("test_data/threshold/threshold.txt")])
-            .non_text_threshold(50);
-        dispatch(opt).unwrap();
-    }
-
-    #[test]
-    fn error_guess() {
-        let opt = &mut option::Opt::new()
-            .paths(vec![path::PathBuf::from("test_data/error_guess/nullchars.txt")]);
-        dispatch(opt).unwrap_err();
-    }
-
-    #[test]
-    fn error_guess_quiet() {
-        let opt = &mut option::Opt::new()
-            .paths(vec![path::PathBuf::from("test_data/error_guess/nullchars.txt")])
-            .quiet(true);
-        dispatch(opt).unwrap_err();
-    }
 }
 

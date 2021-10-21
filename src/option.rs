@@ -28,7 +28,7 @@ pub struct Opt {
     /// Threshold (0-100) of non-text character occurrence.
     /// Above this threshold in decoded texts, the auto-detection is treated as it failed.
     /// In that case the input texts are output as-is with an error message emitted.
-    #[structopt(name = "PERCENTAGE", short = "n", long = "non-text-threshold", default_value = "0")]
+    #[structopt(name = "PERCENTAGE", short = "T", long = "non-text-threshold", default_value = "0")]
     pub non_text_threshold: u8,
 
     /// Number of non-textual ascii characters to guess the encoding.
@@ -56,50 +56,6 @@ impl Opt {
         opt.chars_to_guess = 100;
         opt.to_code = "UTF-8".into();
         return opt;
-    }
-    pub fn version(mut self: Self, version: bool) -> Self {
-        self.version = version;
-        return self;
-    }
-
-    pub fn to_code(mut self: Self, to_code: &str) -> Self {
-        self.to_code = to_code.into();
-        return self;
-    }
-
-    pub fn output(mut self: Self, output: Option<PathBuf>) -> Self {
-        self.output = output;
-        return self;
-    }
-
-    pub fn list(mut self: Self, list: bool) -> Self {
-        self.list = list;
-        return self;
-    }
-
-    pub fn non_text_threshold(mut self: Self, non_text_threshold: u8) -> Self {
-        self.non_text_threshold = non_text_threshold;
-        return self;
-    }
-
-    pub fn chars_to_guess(mut self: Self, chars_to_guess: usize) -> Self {
-        self.chars_to_guess = chars_to_guess;
-        return self;
-    }
-
-    pub fn show(mut self: Self, show: bool) -> Self {
-        self.show = show;
-        return self;
-    }
-
-    pub fn quiet(mut self: Self, quiet: bool) -> Self {
-        self.quiet = quiet;
-        return self;
-    }
-
-    pub fn paths(mut self: Self, paths: Vec<PathBuf>) -> Self {
-        self.paths = paths;
-        return self;
     }
 }
 

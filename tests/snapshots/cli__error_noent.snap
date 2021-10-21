@@ -1,0 +1,6 @@
+---
+source: tests/cli.rs
+expression: "std::str::from_utf8(&output.stderr).unwrap()"
+
+---
+"test/file/doesnt/exist: Error opening the file. Cause: No such file or directory\n"

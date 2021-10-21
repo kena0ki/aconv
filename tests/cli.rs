@@ -1,6 +1,5 @@
-use assert_cmd::prelude::*; // Add methods on commands
-use predicates::prelude::*; // Used for writing assertions
-use std::process::Command; // Run programs
+// use assert_cmd::prelude::*; // Add methods on commands
+use assert_cmd::Command; // Run programs
 use walkdir::WalkDir;
 use std::io::Read;
 use insta;
@@ -44,27 +43,22 @@ fn to_code() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
-//
-//    #[test]
-//    fn list() {
-//        let opt = &mut option::Opt::new()
-//            .list(true);
-//        dispatch(opt).unwrap();
-//    }
-//
-//    #[test]
-//    fn show() {
-//        let opt = &mut option::Opt::new()
-//            .paths(vec![path::PathBuf::from("test_data/files_to_dir")])
-//            .show(true);
-//        dispatch(opt).unwrap();
-//    }
+
+#[test]
+fn threshold() -> Result<(), Box<dyn std::error::Error>> {
+    let mut cmd = Command::cargo_bin("aconv")?;
+    let output = cmd.args(&["-T","50"])
+        .write_stdin("a\x00b\x00c\x00d\x00e\x00")
+        .unwrap();
+    insta::assert_debug_snapshot!(std::str::from_utf8(&output.stdout).unwrap());
+    Ok(())
+}
 
 #[test]
 fn list() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin("aconv")?;
-    let output = cmd.arg("-v").output().unwrap();
-    insta::assert_debug_snapshot!(output.stdout);
+    let output = cmd.arg("-l").unwrap();
+    insta::assert_display_snapshot!(std::str::from_utf8(&output.stdout).unwrap());
     Ok(())
 }
 
@@ -72,30 +66,65 @@ fn list() -> Result<(), Box<dyn std::error::Error>> {
 fn show() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin("aconv")?;
     let output = cmd.arg("test_data/to_code").arg("-s").unwrap();
-    insta::assert_debug_snapshot!(output.stdout);
+    insta::assert_display_snapshot!(std::str::from_utf8(&output.stdout).unwrap());
     Ok(())
 }
 
 #[test]
 fn version() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin("aconv")?;
-    cmd.arg("-v");
-    cmd.assert()
-        .success()
-    //    .stdout(predicate::str::contains(format!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"))));
-        .stdout("");
+    let output = cmd.arg("-v").unwrap();
+    insta::assert_display_snapshot!(std::str::from_utf8(&output.stdout).unwrap());
     Ok(())
 }
 
 #[test]
 fn error_noent() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin("aconv")?;
+    let assert = cmd.arg("test/file/doesnt/exist").assert().failure();
+    let output = assert.get_output();
+    insta::assert_debug_snapshot!(std::str::from_utf8(&output.stderr).unwrap());
+    Ok(())
+}
 
-    cmd.arg("foobar").arg("test/file/doesnt/exist");
-    cmd.assert()
-        .failure()
-        .stderr(predicate::str::contains("No such file or directory"));
+#[test]
+fn error_guess() -> Result<(), Box<dyn std::error::Error>> {
+    let mut cmd = Command::cargo_bin("aconv")?;
+    let assert = cmd.write_stdin("a\x00b\x00c\x00d\x00e\x00").assert().failure();
+    let output = assert.get_output();
+    insta::assert_debug_snapshot!("error_guess_stdout", std::str::from_utf8(&output.stdout).unwrap());
+    insta::assert_debug_snapshot!("error_guess_stderr", std::str::from_utf8(&output.stderr).unwrap());
+    Ok(())
+}
 
+#[test]
+fn error_guess_quiet() -> Result<(), Box<dyn std::error::Error>> {
+    let mut cmd = Command::cargo_bin("aconv")?;
+    let assert = cmd.arg("-q").write_stdin("a\x00b\x00c\x00d\x00e\x00").assert().success();
+    let output = assert.get_output();
+    insta::assert_debug_snapshot!("error_guess_quiet_stdout", std::str::from_utf8(&output.stdout).unwrap());
+    insta::assert_debug_snapshot!("error_guess_quiet_stderr", std::str::from_utf8(&output.stderr).unwrap());
+    Ok(())
+}
+
+#[test]
+fn error_guess_file() -> Result<(), Box<dyn std::error::Error>> {
+    let mut cmd = Command::cargo_bin("aconv")?;
+    let assert = cmd.arg("test_data/threshold/threshold.txt").assert().failure();
+    let output = assert.get_output();
+    insta::assert_debug_snapshot!("error_guess_file_stdout", std::str::from_utf8(&output.stdout).unwrap());
+    insta::assert_debug_snapshot!("error_guess_file_stderr", std::str::from_utf8(&output.stderr).unwrap());
+    Ok(())
+}
+
+#[test]
+fn error_guess_file_quiet() -> Result<(), Box<dyn std::error::Error>> {
+    let mut cmd = Command::cargo_bin("aconv")?;
+    let assert = cmd.arg("test_data/threshold/threshold.txt")
+        .arg("-q").write_stdin("a\x00b\x00c\x00d\x00e\x00").assert().success();
+    let output = assert.get_output();
+    insta::assert_debug_snapshot!("error_guess_file_quiet_stdout", std::str::from_utf8(&output.stdout).unwrap());
+    insta::assert_debug_snapshot!("error_guess_file_quiet_stderr", std::str::from_utf8(&output.stderr).unwrap());
     Ok(())
 }
 
@@ -137,26 +166,3 @@ fn assert_directories(left_str: &str, right_str: &str) {
         }
     }
 }
-//
-//    #[test]
-//    fn threshold() {
-//        let opt = &mut option::Opt::new()
-//            .paths(vec![path::PathBuf::from("test_data/threshold/threshold.txt")])
-//            .non_text_threshold(50);
-//        dispatch(opt).unwrap();
-//    }
-//
-//    #[test]
-//    fn error_guess() {
-//        let opt = &mut option::Opt::new()
-//            .paths(vec![path::PathBuf::from("test_data/error_guess/nullchars.txt")]);
-//        dispatch(opt).unwrap_err();
-//    }
-//
-//    #[test]
-//    fn error_guess_quiet() {
-//        let opt = &mut option::Opt::new()
-//            .paths(vec![path::PathBuf::from("test_data/error_guess/nullchars.txt")])
-//            .quiet(true);
-//        dispatch(opt).unwrap_err();
-//    }
