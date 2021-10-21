@@ -13,7 +13,6 @@ pub struct Transcoder {
     encoder: Option<enc::Encoder>,
     decode_buffer: Vec<u8>,
     unencoded_bytes: Vec<u8>,
-    detector: cd::EncodingDetector
 }
 
 impl<'a> Transcoder {
@@ -38,7 +37,6 @@ impl<'a> Transcoder {
             encoder,
             decode_buffer: vec![0u8;8*1024],
             unencoded_bytes: Vec::with_capacity(8*1024),
-            detector: cd::EncodingDetector::new(),
         });
     }
     pub fn transcode(self: &mut Self, src: &[u8], dst: &mut [u8], last: bool) -> (enc::CoderResult, usize, usize) {
@@ -75,6 +73,8 @@ impl<'a> Transcoder {
     pub fn guess_and_transcode(self: &mut Self, src: &mut [u8], dst: & mut [u8], chars_to_guess: usize, non_text_threshold: u8, eof: bool)
         -> Result<(enc::CoderResult, usize, usize), String> {
 
+        let mut detector = cd::EncodingDetector::new();
+
         // guess the encoding and get a decoder
         let mut decoder = match enc::Encoding::for_bom(src) { // BOM sniffing
             Some(found_bom) => {
@@ -89,7 +89,7 @@ impl<'a> Transcoder {
                 for b in src.iter() {
                     num_fed+=1;
                     exhausted = num_read == num_fed;
-                    let is_non_ascii = self.detector.feed(&[*b], eof && exhausted);
+                    let is_non_ascii = detector.feed(&[*b], eof && exhausted);
                     let is_non_text = Transcoder::is_non_text(&(*b as char));
                     if is_non_ascii || is_non_text {
                         non_ascii_cnt+=1;
@@ -100,7 +100,7 @@ impl<'a> Transcoder {
                 }
                 let top_level_domain = None;
                 let allow_utf8 = true;
-                self.detector.guess(top_level_domain, allow_utf8).new_decoder()
+                detector.guess(top_level_domain, allow_utf8).new_decoder()
             },
         };
         let (coder_result, decoder_read, decoder_written)
