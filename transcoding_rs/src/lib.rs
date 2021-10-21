@@ -23,7 +23,7 @@ impl<'a> Transcoder {
             return self;
         }
         self.decode_buffer = vec![0u8; size];
-        self.unencoded_bytes = vec![0u8; size];
+        self.unencoded_bytes = Vec::with_capacity(size);
         return self;
     }
     pub fn new(src_encoding: Option<&'static enc::Encoding>, dst_encoding: &'static enc::Encoding) -> Self {
