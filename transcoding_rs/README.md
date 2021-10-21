@@ -1,39 +1,14 @@
-# utf8ify  
+# transcoding_rs  
 
-Converts texts from an auto detected encoding to utf-8 or a specified encoding.  
+Detects the source text encoding and transcodes to another.  
 Since this library depends on [`encoding_rs`](https://github.com/hsivonen/encoding_rs), available encodings are the ones defined in [the Encoding Standard](https://encoding.spec.whatwg.org).  
-If malformed byte sequences are found, they are replaced with REPLACEMENT CHARACTER(U+FFFD).  
-If the auto-detection is considered it failed, the input texts are output as-is, meaning no conversion takes place, with an error message emitted.  
 
-## Installation
-
+Note: UTF-16 files are needed to have a BOM to be automatically detected as the encoding. This is because [`chardetng`](https://github.com/hsivonen/chardetng) does not support UTF-16 and this library added only BOM sniffing to detect UTF-16.  
 
 ## Usage
 
-
-## Options  
-```  
--t ENCODING, --to-code=ENCODING  
-    The encoding of the output.  
-    Default is utf-8 as the name implies.  
--o DIRECTORY  
-    Output the result to DIRECTORY.  
-    If input arguments contain directories, the directory hierarchies are preserved under DIRECTORY.  
--l  
-    Shows supported encodings.  
--n PERCENTAGE, --non-text-threshold PERCENTAGE  
-    Above this threshold (0-100) of non-text character occurrence in decoded texts,  
-    the auto-detection is treated as it failed.  
-    In that case the input texts are output as-is with an error message emitted.  
-    The default value is 0.  
--s  
-    Shows only detected encodings.  
--q  
-    If given, suppress error messages.  
-```  
-
 ## How auto-detection works.  
-Since texts are just byte sequences, there is no way to detect the right encoding with 100% accuracy.  
+Since texts are internally just byte sequences, there is no way to detect the right encoding with 100% accuracy.  
 So we need to guess the right encoding somehow.  
 The below is the flow we roughly follow.  
 
@@ -42,7 +17,7 @@ The below is the flow we roughly follow.
 2. Guess the encoding using `chardetng`.  
 3. Decode texts using `encoding_rs`.  
 4. Check the decoded texts if there are non-text characters, which are described below.  
-   If non-text characters do not exceed `--non-text-threshold`, output the decoded texts.  
+   If non-text characters do not exceed the threshold, output the decoded texts.  
    Otherwise, emit an error message and output the input texts as it is.  
 
 #### Non-text characters  

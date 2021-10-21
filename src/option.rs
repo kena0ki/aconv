@@ -8,7 +8,7 @@ use std::path::PathBuf;
 #[derive(StructOpt, Debug, Default)]
 #[structopt(verbatim_doc_comment, version=env!("CARGO_PKG_VERSION"))]
 pub struct Opt {
-    /// Prints version info and exit.
+    /// Prints version information.
     #[structopt(short, long)]
     pub version: bool,
 
@@ -41,7 +41,7 @@ pub struct Opt {
     #[structopt(short, long)]
     pub show: bool,
 
-    /// Suppresses error messages.
+    /// Suppresses error messages when auto-detection failed.
     #[structopt(short, long)]
     pub quiet: bool,
 

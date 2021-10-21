@@ -70,7 +70,7 @@ impl<'a> Transcoder {
         }
     }
 
-    pub fn guess_and_transcode(self: &mut Self, src: &mut [u8], dst: & mut [u8], chars_to_guess: usize, non_text_limit: u8, eof: bool)
+    pub fn guess_and_transcode(self: &mut Self, src: &mut [u8], dst: & mut [u8], chars_to_guess: usize, non_text_threshold: u8, eof: bool)
         -> Result<(enc::CoderResult, usize, usize), String> {
 
         // guess the encoding and get a decoder
@@ -102,14 +102,14 @@ impl<'a> Transcoder {
             },
         };
         let (coder_result, decoder_read, decoder_written)
-            = Transcoder::try_transcode(self, &mut decoder, eof, src, dst, non_text_limit)?;
+            = Transcoder::try_transcode(self, &mut decoder, eof, src, dst, non_text_threshold)?;
         self.src_encoding = Some(decoder.encoding());
         self.decoder = Some(decoder);
         return Ok((coder_result, decoder_read, decoder_written));
     }
 
 
-    fn try_transcode(self: &mut Self, decoder: &mut enc::Decoder, eof: bool, src: &[u8], dst: &mut [u8], non_text_limit: u8)
+    fn try_transcode(self: &mut Self, decoder: &mut enc::Decoder, eof: bool, src: &[u8], dst: &mut [u8], non_text_threshold: u8)
         -> Result<(enc::CoderResult, usize, usize), String> {
         let decode_buffer = if self.dst_encoding == enc::UTF_8 {
             &mut (*dst)
@@ -127,7 +127,7 @@ impl<'a> Transcoder {
                     non_text_cnt+=1;
                 }
             }
-            (non_text_limit as usize) < (non_text_cnt * 100 / decode_buffer_str.chars().count())
+            (non_text_threshold as usize) < (non_text_cnt * 100 / decode_buffer_str.chars().count())
         } else {
             true
         };
