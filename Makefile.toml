@@ -39,7 +39,7 @@ dependencies = ["llvm_install", "clean-profraw"]
 [tasks.test-cov]
 extend = "test"
 toolchain = "nightly"
-env = { LLVM_PROFILE_FILE="your_name-%p-%m.profraw", RUST_LOG="debug" }
+env = { LLVM_PROFILE_FILE="coverage-%p-%m.profraw", RUST_LOG="debug" }
 dependencies = ["build-cov"]
 args = [
   "test",
