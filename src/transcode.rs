@@ -22,7 +22,7 @@ pub fn transcode(reader: &mut dyn io::Read, writer: &mut dyn io::Write, encoding
         writer.write_all(&buf_guess).map_err(map_write_err)?;
         return Ok(enc::UTF_8);
     }
-    let transcoder = &mut tc::Transcoder::new_with_buff_size(None, encoding, 10 * 1024).unwrap();
+    let transcoder = &mut tc::Transcoder::new(None, encoding).buffer_size(10 * 1024);
     let num_read = {
         let rslt = transcoder.guess_and_transcode(&mut buf_guess, output_buffer, opt.chars_to_guess, opt.non_text_threshold, eof);
         match rslt {
