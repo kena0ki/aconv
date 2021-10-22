@@ -5,98 +5,32 @@ use transcoding_rs as tc;
 use encoding_rs as enc;
 use std::io;
 
-pub fn transcode(reader: &mut dyn io::Read, writer: &mut dyn io::Write, encoding: &'static enc::Encoding,
-    input_buffer: &mut [u8], output_buffer: &mut [u8], opt: &option::Opt)
+pub fn transcode(reader: &mut dyn io::Read, writer: &mut dyn io::Write, encoding: &'static enc::Encoding, opt: &option::Opt)
     -> Result<&'static enc::Encoding, error::TranscodeError> {
 
-    // guess the input encoding using up to a few Kbytes of byte sequences
-    let (mut buf_guess, eof) = {
-        let in_size = input_buffer.len()-1; // to check if second read size is 0, -1 from input_buffer size.
-        let first_size=reader.read(&mut input_buffer[..in_size]).unwrap_or(0);
-        let second_size=reader.read(&mut input_buffer[first_size..]).unwrap_or(0);
-        let buf_guess = &mut input_buffer[..(first_size+second_size)];
-        let eof = second_size == 0;
-        (buf_guess, eof)
-    };
-    if buf_guess.len() == 0 { // empty file
-        writer.write_all(&buf_guess).map_err(map_write_err)?;
+    let transcoding_reader = &mut tc::TranscodingReader::new(reader, None, encoding)
+        .buffer_size(10 * 1024)
+        .non_ascii_to_guess(opt.chars_to_guess)
+        .non_text_threshold(opt.non_text_threshold);
+    let (guessed_enc_opt, is_empty) = transcoding_reader.guess().map_err(map_read_err)?;
+    if is_empty { // empty file
+        writer.write_all(&[]).map_err(map_write_err)?;
         return Ok(enc::UTF_8);
     }
-    let transcoder = &mut tc::Transcoder::new(None, encoding).buffer_size(10 * 1024);
-    let (guessed_enc_opt, coder_result, num_read, num_written, _)
-        = transcoder.guess_and_transcode(&mut buf_guess, output_buffer, opt.chars_to_guess, opt.non_text_threshold, eof);
     match guessed_enc_opt {
         Some(guessed_enc) => {
             if opt.show {
                 return Ok(guessed_enc);
             }
-            let should_not_transcode = guessed_enc == transcoder.dst_encoding();
-            if should_not_transcode {
-                // write input to output as-is
-                writer.write_all(&buf_guess).map_err(map_write_err)?;
-                io::copy(reader, writer).map(|_| ()).map_err(map_write_err)?;
-                return Ok(guessed_enc);
-            }
-            if transcoder.dst_encoding() == enc::UTF_16BE && [0xFE,0xFF] != output_buffer[..2] {
-                writer.write_all(b"\xFE\xFF").map_err(map_write_err)?; // add a BOM
-            }
-            if transcoder.dst_encoding() == enc::UTF_16LE && [0xFF,0xFE] != output_buffer[..2] {
-                writer.write_all(b"\xFF\xFE").map_err(map_write_err)?; // add a BOM
-            }
-            // write transcoded bytes in buffer
-            writer.write_all(&output_buffer[..num_written]).map_err(map_write_err)?;
-            if coder_result == enc::CoderResult::InputEmpty && eof == true {
-                return Ok(guessed_enc);
-            }
+            io::copy(transcoding_reader, writer).map(|_| ()).map_err(map_write_err)?;
+            return Ok(guessed_enc_opt.unwrap());
         },
-        None => {
+        None => { // if no encoding is found
             // write input to output as-is
-            writer.write_all(&buf_guess).map_err(map_write_err)?;
-            io::copy(reader, writer).map(|_| ()).map_err(map_write_err)?;
+            io::copy(transcoding_reader, writer).map(|_| ()).map_err(map_write_err)?;
             return Err(error::TranscodeError::Guess("Auto-detection seems to fail.".into()));
         }
     }
-
-    // decode rest of bytes in buffer
-    transcode_buffer_and_write(writer, transcoder, &buf_guess[num_read..], output_buffer, eof)?;
-
-    // decode bytes remaining in file
-    transcode_file_and_write(reader, writer, transcoder, input_buffer, output_buffer)?;
-
-    return Ok(guessed_enc_opt.unwrap());
-}
-
-fn transcode_file_and_write(reader: &mut dyn io::Read,writer: &mut dyn io::Write, transcoder: &mut tc::Transcoder,
-    input_buffer: &mut [u8], output_buffer: &mut [u8])
-    -> Result<(), error::TranscodeError>{
-    loop {
-        let num_read = reader.read(input_buffer).map_err(map_read_err)?;
-        let eof = num_read == 0;
-        transcode_buffer_and_write(writer, transcoder, &input_buffer[..num_read], output_buffer, eof)?;
-        if eof {
-            break;
-        }
-    };
-    return Ok(());
-}
-
-fn transcode_buffer_and_write(writer: &mut dyn io::Write, transcoder: &mut tc::Transcoder,
-    src: &[u8], output_buffer: &mut [u8], eof: bool) 
-    -> Result<(), error::TranscodeError>{
-    let mut transcoder_input_start = 0;
-    if src.len() == 0 && !eof { // encoding_rs unable to handle unnecessary calls well, so let's skip them
-        return Ok(());
-    }
-    loop {
-        let (result, num_transcoder_read, num_transcoder_written, _)
-            = transcoder.transcode(&src[transcoder_input_start..], output_buffer, eof);
-        transcoder_input_start+=num_transcoder_read;
-        writer.write_all(&output_buffer[..num_transcoder_written]).map_err(map_write_err)?;
-        if result == enc::CoderResult::InputEmpty {
-            break;
-        }
-    }
-    return Ok(());
 }
 
 fn map_write_err(err: io::Error) -> error::TranscodeError {
@@ -121,11 +55,7 @@ mod tests {
                 let ifile_handle = &mut std::fs::File::open(test_data.join($input_file)).unwrap();
                 let enc = super::enc::Encoding::for_label($enc.as_bytes()).unwrap_or(&super::enc::UTF_8_INIT);
                 let output = &mut Vec::with_capacity(20*1024);
-                let input_buffer = &mut [0u8; 5*1024]; // 5K bytes
-                // let input_buffer = &mut [0u8; 32]; // 5K bytes
-                let output_buffer = &mut [0u8; 10*1024]; // 10K bytes
-                // let output_buffer = &mut [0u8; 128]; // 10K bytes
-                let _ = super::transcode(ifile_handle, output, enc, input_buffer, output_buffer, &opt);
+                let _ = super::transcode(ifile_handle, output, enc, &opt);
                 let efile_handle = &mut std::fs::File::open(test_data.join($expected_file)).unwrap();
                 let expected_string = &mut Vec::with_capacity(20*1024);
                 efile_handle.read_to_end(expected_string).unwrap();

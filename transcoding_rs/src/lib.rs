@@ -1,11 +1,12 @@
 mod constants;
-pub mod transcoding_reader;
+mod transcoding_reader;
 
 use encoding_rs as enc;
 use chardetng as cd;
 use std::str;
 
 pub use constants::ENCODINGS;
+pub use transcoding_reader::TranscodingReader;
 
 
 pub struct Transcoder {
