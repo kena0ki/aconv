@@ -238,27 +238,6 @@ mod tests {
     use std::path;
     use super::*;
 
-    // macro_rules! test_reader {
-    //     ($name:ident, $input_file:expr, $expected_file:expr, $enc:expr, $read_buff_size:expr) => {
-    //         #[test]
-    //         fn $name() {
-    //             let test_data = path::Path::new("../test_data");
-    //             let ifile_handle = &mut std::fs::File::open(test_data.join($input_file)).unwrap();
-    //             let enc = enc::Encoding::for_label($enc.as_bytes());
-    //             let t = &mut I18nReader::new(ifile_handle, None, enc.unwrap())
-    //                     .buffer_size(128)
-    //                     .bytes_to_guess(256);
-    //             let mut buff = vec![0u8; $read_buff_size];
-    //             t.guess().unwrap();
-    //             let n = t.read_to_end(&mut buff).unwrap();
-    //             let efile_handle = &mut std::fs::File::open(test_data.join($expected_file)).unwrap();
-    //             let expected_string = &mut Vec::new();
-    //             efile_handle.read_to_end(expected_string).unwrap();
-    //             assert_eq!(&expected_string[..n], &buff[..n]);
-    //         }
-    //     };
-    // }
-
     macro_rules! test_reader {
         ($name:ident, $input_file:expr, $expected_file:expr, $enc:expr) => {
             #[test]
@@ -266,7 +245,7 @@ mod tests {
                 let test_data = path::Path::new("../test_data");
                 let ifile_handle = &mut std::fs::File::open(test_data.join($input_file)).unwrap();
                 let enc = enc::Encoding::for_label($enc.as_bytes());
-                let f = I18nReaderFactory::new();
+                let f = I18nReaderFactory::new().bytes_to_guess(512);
                 let r = f.guess_and_get_with_dst_encoding(ifile_handle, enc.unwrap()).unwrap();
                 if let GuessResult::Success(mut reader, _) = r {
                     let mut buff = Vec::new();
@@ -286,28 +265,56 @@ mod tests {
 
     test_reader!(reader_utf8_euckr       , "utf8_ko.txt"     , "euc-kr_ko.txt"       , "euc-kr");
 
-//    test_guess!(guess_utf16le_utf8     , "utf16le_BOM_th.txt"  , "utf8_th.txt"     , "utf8");
-//    test_guess!(guess_utf16be_utf8     , "utf16be_BOM_th.txt"  , "utf8_th.txt"     , "utf8");
-//    test_guess!(guess_sjis_utf8        , "sjis_ja.txt"         , "utf8_ja.txt"     , "utf8");
-//    test_guess!(guess_eucjp_utf8       , "euc-jp_ja.txt"       , "utf8_ja.txt"     , "utf8");
-//    test_guess!(guess_iso2022jp_utf8   , "iso-2022-jp_ja.txt"  , "utf8_ja.txt"     , "utf8");
-//    test_guess!(guess_big5_utf8        , "big5_zh_CHT.txt"     , "utf8_zh_CHT.txt" , "utf8");
-//    test_guess!(guess_gbk_utf8         , "gbk_zh_CHS.txt"      , "utf8_zh_CHS.txt" , "utf8");
-//    test_guess!(guess_gb18030_utf8     , "gb18030_zh_CHS.txt"  , "utf8_zh_CHS.txt" , "utf8");
-//    test_guess!(guess_euckr_utf8       , "euc-kr_ko.txt"       , "utf8_ko.txt"     , "utf8");
-//    test_guess!(guess_koi8r_utf8       , "koi8-r_ru.txt"       , "utf8_ru.txt"     , "utf8");
-//    test_guess!(guess_windows1252_utf8 , "windows-1252_es.txt" , "utf8_es.txt"     , "utf8");
-//
-//    test_guess!(guess_utf8_utf16le     , "utf8_th.txt"     , "utf16le_th.txt"      , "utf-16le"     );
-//    test_guess!(guess_utf8_utf16be     , "utf8_th.txt"     , "utf16be_th.txt"      , "utf-16be"     );
-//    test_guess!(guess_utf8_sjis        , "utf8_ja.txt"     , "sjis_ja.txt"         , "sjis"         );
-//    test_guess!(guess_utf8_eucjp       , "utf8_ja.txt"     , "euc-jp_ja.txt"       , "euc-jp"       );
-//    test_guess!(guess_utf8_iso2022jp   , "utf8_ja.txt"     , "iso-2022-jp_ja.txt"  , "iso-2022-jp"  );
-//    test_guess!(guess_utf8_big5        , "utf8_zh_CHT.txt" , "big5_zh_CHT.txt"     , "big5"         );
-//    test_guess!(guess_utf8_gbk         , "utf8_zh_CHS.txt" , "gbk_zh_CHS.txt"      , "gbk"          );
-//    test_guess!(guess_utf8_gb18030     , "utf8_zh_CHS.txt" , "gb18030_zh_CHS.txt"  , "gb18030"      );
-//    test_guess!(guess_utf8_euckr       , "utf8_ko.txt"     , "euc-kr_ko.txt"       , "euc-kr"       );
-//    test_guess!(guess_utf8_koi8r       , "utf8_ru.txt"     , "koi8-r_ru.txt"       , "koi8-r"       );
-//    test_guess!(guess_utf8_windows1252 , "utf8_es.txt"     , "windows-1252_es.txt" , "windows-1252" );
+
+    #[test]
+    fn reader_small() {
+        let src = b"\x83\x6E\x83\x8D\x81\x5B\x83\x8F\x81\x5B\x83\x8B\x83\x68";
+        let f = I18nReaderFactory::new().buffer_size(15);
+        let r = f.guess_and_get(src.as_ref()).unwrap();
+        if let GuessResult::Success(mut reader, _) = r {
+            let mut buff = [0u8; 4];
+            let n = reader.read(&mut buff).unwrap();
+            let mut buff2 = [0u8; 1024];
+            let n2 = reader.read(&mut buff2).unwrap();
+            assert_eq!("ハローワールド".as_bytes(), [&buff[..n],&buff2[..n2]].concat())
+        } else {
+            panic!();
+        }
+    }
+
+    #[test]
+    fn reader_fail() {
+        let src = b"\x00\x00\x00\x00\x00\x00";
+        let f = I18nReaderFactory::new().bytes_to_guess(512);
+        let r = f.guess_and_get(src.as_ref()).unwrap();
+        if let GuessResult::Fail(mut reader) = r {
+            let mut buff = [0u8; 1024];
+            let n = reader.read(&mut buff).unwrap();
+            assert_eq!(b"\x00\x00\x00\x00\x00\x00"[..], buff[..n])
+        } else {
+            panic!();
+        }
+    }
+
+    #[test]
+    fn reader_empty() {
+        let src = b"";
+        let f = I18nReaderFactory::new();
+        let r = f.guess_and_get(src.as_ref()).unwrap();
+        if let GuessResult::InputEmpty = r {
+        } else {
+            panic!();
+        }
+    }
+
+    #[test]
+    fn reader_no_guess() {
+        let src = b"\x83\x6E\x83\x8D\x81\x5B\x83\x8F\x81\x5B\x83\x8B\x83\x68";
+        let t = Transcoder::new(Some(enc::SHIFT_JIS), enc::UTF_8);
+        let mut reader = I18nReader::new(src.as_ref(), t);
+        let mut buff = [0u8; 1024];
+        let n = reader.read(&mut buff).unwrap();
+        assert_eq!("ハローワールド".as_bytes(), &buff[..n])
+    }
 }
 
