@@ -8,26 +8,26 @@ use std::io;
 pub fn transcode(reader: &mut dyn io::Read, writer: &mut dyn io::Write, encoding: &'static enc::Encoding, opt: &option::Opt)
     -> Result<&'static enc::Encoding, error::TranscodeError> {
 
-    let i18n_reader = &mut tc::I18nReader::new(reader, None, encoding)
+    let factory = tc::I18nReaderFactory::new()
         .buffer_size(10 * 1024)
         .non_ascii_to_guess(opt.chars_to_guess)
         .non_text_threshold(opt.non_text_threshold);
-    let (guessed_enc_opt, is_empty) = i18n_reader.guess().map_err(map_read_err)?;
-    if is_empty { // empty file
-        writer.write_all(&[]).map_err(map_write_err)?;
-        return Ok(enc::UTF_8);
-    }
-    match guessed_enc_opt {
-        Some(guessed_enc) => {
-            if opt.show {
-                return Ok(guessed_enc);
-            }
-            io::copy(i18n_reader, writer).map(|_| ()).map_err(map_write_err)?;
-            return Ok(guessed_enc_opt.unwrap());
+    let guess_result = factory.guess_and_get_with_dst_encoding(reader, encoding).map_err(map_read_err)?;
+    match guess_result {
+        tc::GuessResult::InputEmpty => {
+            writer.write_all(&[]).map_err(map_write_err)?;
+            return Ok(enc::UTF_8);
         },
-        None => { // if no encoding is found
+        tc::GuessResult::Success(mut i18n_reader, enc) => {
+            if opt.show {
+                return Ok(enc);
+            }
+            io::copy(&mut i18n_reader, writer).map(|_| ()).map_err(map_write_err)?;
+            return Ok(enc);
+        },
+        tc::GuessResult::Fail(mut i18n_reader) => { // if no encoding is found
             // write input to output as-is
-            io::copy(i18n_reader, writer).map(|_| ()).map_err(map_write_err)?;
+            io::copy(&mut i18n_reader, writer).map(|_| ()).map_err(map_write_err)?;
             return Err(error::TranscodeError::Guess("Auto-detection seems to fail.".into()));
         }
     }

@@ -181,14 +181,6 @@ impl Transcoder {
         return false;
     }
 
-    pub fn src_encoding(self: &Self) -> Option<&'static enc::Encoding> {
-        return self.src_encoding;
-    }
-
-    pub fn dst_encoding(self: &Self) -> &'static enc::Encoding {
-        return self.dst_encoding;
-    }
-
     fn u16_to_u8(src: &[u16], dst: &mut [u8], src_length: usize, is_be: bool) {
         let to_bytes = if is_be {
             |src| u16::to_be_bytes(src)
