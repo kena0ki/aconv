@@ -2,7 +2,7 @@
 use encoding_rs as enc;
 use crate::Transcoder;
 
-pub struct TranscodingReader<R: std::io::Read> {
+pub struct I18nReader<R: std::io::Read> {
     reader: R,
     bytes_to_guess: usize,
     non_ascii_to_guess: usize,
@@ -17,9 +17,9 @@ pub struct TranscodingReader<R: std::io::Read> {
     no_transcoding_needed: bool,
 }
 
-impl <R: std::io::Read> TranscodingReader<R> {
+impl <R: std::io::Read> I18nReader<R> {
     pub fn new(reader: R, src_encoding: Option<&'static enc::Encoding>, dst_encoding: &'static enc::Encoding) -> Self {
-        return TranscodingReader {
+        return I18nReader {
             reader,
             bytes_to_guess: 1024,
             non_ascii_to_guess: 100,
@@ -77,7 +77,7 @@ impl <R: std::io::Read> TranscodingReader<R> {
         let rslt = self.transcoder.guess_and_transcode(src, &mut self.buffer, self.non_ascii_to_guess, self.non_text_threshold, self.eof);
         let (guessed_enc_opt, coder_result, num_read, num_written, has_replacement) = rslt;
         self.no_transcoding_needed = guessed_enc_opt.is_none()
-            || (guessed_enc_opt.is_some() && guessed_enc_opt.unwrap() == self.transcoder.dst_encoding);
+            || (guessed_enc_opt.is_some() && guessed_enc_opt.unwrap() == self.transcoder.dst_encoding());
         if self.no_transcoding_needed {
             self.write_buffer = src.to_owned();
             return Ok((guessed_enc_opt, is_empty));
@@ -139,7 +139,7 @@ impl <R: std::io::Read> TranscodingReader<R> {
     }
 }
 
-impl <R: std::io::Read> std::io::Read for TranscodingReader<R> {
+impl <R: std::io::Read> std::io::Read for I18nReader<R> {
 
     fn read(self: &mut Self, buffer: &mut [u8]) -> std::io::Result<usize> {
 
@@ -189,7 +189,7 @@ mod tests {
     //             let test_data = path::Path::new("../test_data");
     //             let ifile_handle = &mut std::fs::File::open(test_data.join($input_file)).unwrap();
     //             let enc = enc::Encoding::for_label($enc.as_bytes());
-    //             let t = &mut TranscodingReader::new(ifile_handle, None, enc.unwrap())
+    //             let t = &mut I18nReader::new(ifile_handle, None, enc.unwrap())
     //                     .buffer_size(128)
     //                     .bytes_to_guess(256);
     //             let mut buff = vec![0u8; $read_buff_size];
@@ -210,7 +210,7 @@ mod tests {
                 let test_data = path::Path::new("../test_data");
                 let ifile_handle = &mut std::fs::File::open(test_data.join($input_file)).unwrap();
                 let enc = enc::Encoding::for_label($enc.as_bytes());
-                let t = &mut TranscodingReader::new(ifile_handle, None, enc.unwrap());
+                let t = &mut I18nReader::new(ifile_handle, None, enc.unwrap());
                 let mut buff = Vec::new();
                 t.guess().unwrap();
                 t.read_to_end(&mut buff).unwrap();

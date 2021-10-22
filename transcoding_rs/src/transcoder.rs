@@ -1,13 +1,8 @@
-mod constants;
-mod transcoding_reader;
-
 use encoding_rs as enc;
 use chardetng as cd;
 use std::str;
 
-pub use constants::ENCODINGS;
-pub use transcoding_reader::TranscodingReader;
-
+use crate::constants;
 
 pub struct Transcoder {
     src_encoding: Option<&'static enc::Encoding>,
@@ -18,7 +13,7 @@ pub struct Transcoder {
     unencoded_bytes: Vec<u8>,
 }
 
-impl<'a> Transcoder {
+impl Transcoder {
     pub fn buffer_size(mut self: Self, size: usize) -> Self {
         if size < 4 { // at least 3 bytes are required for encoding_rs to write a valid UTF-8 character.
             return self;

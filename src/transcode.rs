@@ -8,11 +8,11 @@ use std::io;
 pub fn transcode(reader: &mut dyn io::Read, writer: &mut dyn io::Write, encoding: &'static enc::Encoding, opt: &option::Opt)
     -> Result<&'static enc::Encoding, error::TranscodeError> {
 
-    let transcoding_reader = &mut tc::TranscodingReader::new(reader, None, encoding)
+    let i18n_reader = &mut tc::I18nReader::new(reader, None, encoding)
         .buffer_size(10 * 1024)
         .non_ascii_to_guess(opt.chars_to_guess)
         .non_text_threshold(opt.non_text_threshold);
-    let (guessed_enc_opt, is_empty) = transcoding_reader.guess().map_err(map_read_err)?;
+    let (guessed_enc_opt, is_empty) = i18n_reader.guess().map_err(map_read_err)?;
     if is_empty { // empty file
         writer.write_all(&[]).map_err(map_write_err)?;
         return Ok(enc::UTF_8);
@@ -22,12 +22,12 @@ pub fn transcode(reader: &mut dyn io::Read, writer: &mut dyn io::Write, encoding
             if opt.show {
                 return Ok(guessed_enc);
             }
-            io::copy(transcoding_reader, writer).map(|_| ()).map_err(map_write_err)?;
+            io::copy(i18n_reader, writer).map(|_| ()).map_err(map_write_err)?;
             return Ok(guessed_enc_opt.unwrap());
         },
         None => { // if no encoding is found
             // write input to output as-is
-            io::copy(transcoding_reader, writer).map(|_| ()).map_err(map_write_err)?;
+            io::copy(i18n_reader, writer).map(|_| ()).map_err(map_write_err)?;
             return Err(error::TranscodeError::Guess("Auto-detection seems to fail.".into()));
         }
     }
