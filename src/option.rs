@@ -27,13 +27,13 @@ pub struct Opt {
     #[structopt(short, long)]
     pub list: bool,
 
-    /// Threshold (0-100) of non-text character occurrence.
+    /// The threshold (0-100) of non-text character occurrence.
     /// Above this threshold in decoded texts, the auto-detection is treated as it failed.
     /// In that case the input texts are output as-is with an error message emitted.
     #[structopt(name = "PERCENTAGE", short = "T", long = "non-text-threshold", default_value = "0")]
     pub non_text_threshold: u8,
 
-    /// Number of non textual-ascii characters to guess the encoding.
+    /// The number of non-ASCII characters to guess the encoding.
     /// Around 100 characters are enough for most cases, but if the guess is not accurate, increasing the value
     /// might help.
     #[structopt(name = "NUMBER", short = "A", long = "non_ascii_to_guess", default_value = "100")]

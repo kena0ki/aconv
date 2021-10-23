@@ -1,9 +1,12 @@
+//! Low level API for transcoding.
+
 use encoding_rs as enc;
 use chardetng as cd;
 use std::str;
 
 use crate::constants;
 
+/// Low level API for transcoding.
 pub struct Transcoder {
     src_encoding: Option<&'static enc::Encoding>,
     dst_encoding: &'static enc::Encoding,
@@ -14,14 +17,19 @@ pub struct Transcoder {
 }
 
 impl Transcoder {
-    pub fn buffer_size(mut self: Self, size: usize) -> Self {
-        if size < 4 { // at least 3 bytes are required for encoding_rs to write a valid UTF-8 character.
-            return self;
-        }
-        self.decode_buffer = vec![0u8; size];
-        self.unencoded_bytes = Vec::with_capacity(size);
-        return self;
-    }
+
+    /// Creates a new `Transcoder` with a source encoding and a destination encoding.
+    /// The source encoding is optional but if not specifed, `guess_and_transcode()` must be called before
+    /// `transcode()` is called.
+    /// Default buffer size is 8K bytes.
+    ///
+    /// # Example
+    /// ```
+    /// let transcoder = transcoding_rs::Transcoder::new(
+    ///     Some(encoding_rs::UTF_16BE),
+    ///     encoding_rs::UTF_8
+    ///     );
+    /// ```
     pub fn new(src_encoding: Option<&'static enc::Encoding>, dst_encoding: &'static enc::Encoding) -> Self {
         let unsupported_encoding = dst_encoding == enc::UTF_16BE || dst_encoding == enc::UTF_16LE;
         let encoder = if unsupported_encoding {
@@ -38,6 +46,60 @@ impl Transcoder {
             unencoded_bytes: Vec::with_capacity(8*1024),
         };
     }
+
+    /// Sets buffer size.
+    /// The size needs to be more than 4 bytes. Otherwise, the specified value is ignored.
+    ///
+    /// # Example
+    /// ```
+    /// let transcoder = transcoding_rs::Transcoder::new(
+    ///     Some(encoding_rs::UTF_16BE),
+    ///     encoding_rs::UTF_8)
+    ///     .buffer_size(1024); // sets buffer size.
+    /// ```
+    pub fn buffer_size(mut self: Self, size: usize) -> Self {
+        if size < 4 { // at least 3 bytes are required for encoding_rs to write a valid UTF-8 character.
+            return self;
+        }
+        self.decode_buffer = vec![0u8; size];
+        self.unencoded_bytes = Vec::with_capacity(size);
+        return self;
+    }
+
+    /// Transcodes the source encoding to the destination encoding.
+    /// Main functionality and usage are the same as decode_to_* or encode_fro_* methods in encoding_rs.
+    /// The key difference is that this function combined decode_to_* and encode_from_* methods
+    /// excluding *_without_no_replacement variants in encoding_rs.
+    /// So this function can transcode any given encoding to another as long as they are supported.
+    ///
+    /// # Parameters
+    ///  - src: The input to be encoded.
+    ///  - dst: The estination buffer the output is written to.
+    ///  - last: Specify true if the input has reached EOF, or otherwise false.
+    ///          This method can be called multiple times with this value being true,
+    ///          until the method returns InputEmpty.
+    ///          After the time, no more method must not be called. Otherwise, a panic is raised.
+    ///
+    /// # Return values
+    /// In addition to encoded data being written to `dst`, the guessed encoding and some information are returned by a tuple.
+    ///  - 1: InputEmpty if the input is all read,
+    ///       OutputFull if `dst` has no more available buffer to write the output.
+    ///  - 3: The number of bytes read.
+    ///  - 4: The number of bytes written.
+    ///  - 4: Whether malformed byte sequences or unmappable characters are found while transcoding.
+    ///
+    /// # Example
+    /// ```
+    /// let mut transcoder = transcoding_rs::Transcoder::new(
+    ///     Some(encoding_rs::SHIFT_JIS),
+    ///     encoding_rs::UTF_8);
+    /// let src = b"\x83\x6E\x83\x8D\x81\x5B"; // ハロー in SHIFT_JIS
+    /// let buf = &mut [0u8; 128];
+    /// let result = transcoder.transcode(src, buf, true);
+    /// let (_, _, num_written, _) = result;
+    ///
+    /// assert_eq!("ハロー".as_bytes(), &buf[..num_written]);
+    /// ```
     pub fn transcode(self: &mut Self, src: &[u8], dst: &mut [u8], last: bool) -> (enc::CoderResult, usize, usize, bool) {
         let decoder = self.decoder.as_mut().expect("transcode() should be called after the source encoding is detected.");
         if self.dst_encoding == enc::UTF_8 {
@@ -69,7 +131,42 @@ impl Transcoder {
         }
     }
 
-    pub fn guess_and_transcode(self: &mut Self, src: &[u8], dst: & mut [u8], non_ascii_to_guess: usize, non_text_threshold: u8, eof: bool)
+    /// Guesses the source encoding and try to transcode input.
+    /// This method should be called once before the `transcode()` method if `Transcode` is created with no source encoding provided.
+    /// This method must not be called after `transcode()` is called.
+    ///
+    /// # Parameters
+    ///  - src: The input to be encoded.
+    ///  - dst: The estination buffer the output is written to.
+    ///  - non_ascii_to_guess: The number of non-ASCII characters to be used to guess the encoding.
+    ///                        Non-ASCII here includes non-textual characters.
+    ///  - non_text_threshold: The threshold to determine the guess is failed.
+    ///                        The value should be specified in percentage.
+    ///  - last: Specify true if the input has reached EOF, or otherwise false.
+    ///
+    /// # Return values
+    /// In addition to encoded data being written to `dst`, the guessed encoding and some information are returned by a tuple.
+    ///  - 1: The guessed encoding if the guess succeeds.
+    ///  - 2: InputEmpty if input is all read,
+    ///       OutputFull if `dst` has no more available buffer to write the output.
+    ///  - 3: The number of bytes read.
+    ///  - 4: The number of bytes written.
+    ///  - 5: Whether malformed byte sequences or unmappable characters are found while transcoding.
+    ///
+    /// # Example
+    /// ```
+    /// let mut transcoder = transcoding_rs::Transcoder::new(
+    ///     None, // Not provide the source encoding.
+    ///     encoding_rs::UTF_8);
+    /// let src = b"\x83\x6E\x83\x8D\x81\x5B"; // ハロー in SHIFT_JIS
+    /// let buf = &mut [0u8; 128];
+    /// let result = transcoder.guess_and_transcode(src, buf, 6, 0, true);
+    /// let (enc, _, _, num_written, _) = result;
+    ///
+    /// assert_eq!(encoding_rs::SHIFT_JIS, enc.unwrap());
+    /// assert_eq!("ハロー".as_bytes(), &buf[..num_written]);
+    /// ```
+    pub fn guess_and_transcode(self: &mut Self, src: &[u8], dst: & mut [u8], non_ascii_to_guess: usize, non_text_threshold: u8, last: bool)
         -> (Option<&'static enc::Encoding>, enc::CoderResult, usize, usize, bool) {
 
         let mut detector = cd::EncodingDetector::new();
@@ -88,7 +185,7 @@ impl Transcoder {
                 for b in src.iter() {
                     num_fed+=1;
                     exhausted = num_read == num_fed;
-                    let is_non_ascii = detector.feed(&[*b], eof && exhausted);
+                    let is_non_ascii = detector.feed(&[*b], last && exhausted);
                     let is_non_text = Transcoder::is_non_text(&(*b as char));
                     if is_non_ascii || is_non_text {
                         non_ascii_cnt+=1;
@@ -103,7 +200,7 @@ impl Transcoder {
             },
         };
         let (ok, coder_result, decoder_read, decoder_written, has_replacement)
-            = Transcoder::try_transcode(self, &mut decoder, eof, src, dst, non_text_threshold);
+            = Transcoder::try_transcode(self, &mut decoder, last, src, dst, non_text_threshold);
         if ok {
             self.src_encoding = Some(decoder.encoding());
             self.decoder = Some(decoder);
@@ -116,14 +213,14 @@ impl Transcoder {
     }
 
 
-    fn try_transcode(self: &mut Self, decoder: &mut enc::Decoder, eof: bool, src: &[u8], dst: &mut [u8], non_text_threshold: u8)
+    fn try_transcode(self: &mut Self, decoder: &mut enc::Decoder, last: bool, src: &[u8], dst: &mut [u8], non_text_threshold: u8)
         -> (bool, enc::CoderResult, usize, usize, bool) {
         let decode_buffer = if self.dst_encoding == enc::UTF_8 {
             &mut (*dst)
         } else {
             &mut self.decode_buffer
         };
-        let (decoder_result, num_decoder_read, num_decoder_written, has_replacement) = decoder.decode_to_utf8(src, decode_buffer, eof);
+        let (decoder_result, num_decoder_read, num_decoder_written, has_replacement) = decoder.decode_to_utf8(src, decode_buffer, last);
         let decode_buffer_str = unsafe{
             str::from_utf8_unchecked_mut(&mut decode_buffer[..num_decoder_written])
         };
@@ -149,7 +246,7 @@ impl Transcoder {
             let new_decoder = self.decoder.as_mut().unwrap();
             let dst_u16 = &mut vec![0u16; dst.len()/2];
             let (result, num_decoder_read, num_decoder_written, has_replacement) =
-                new_decoder.decode_to_utf16(src, dst_u16, eof);
+                new_decoder.decode_to_utf16(src, dst_u16, last);
             Transcoder::u16_to_u8(dst_u16, dst, num_decoder_written, self.dst_encoding == enc::UTF_16BE);
             return (true, result, num_decoder_read, num_decoder_written*2, has_replacement);
         } else {
@@ -159,7 +256,7 @@ impl Transcoder {
             };
             let encoder = self.encoder.as_mut().unwrap();
             let (encoder_result, num_encoder_read, num_encoder_written, has_unmappable) =
-                encoder.encode_from_utf8(encoder_input, dst, eof);
+                encoder.encode_from_utf8(encoder_input, dst, last);
             self.unencoded_bytes = self.unencoded_bytes[num_encoder_read..].to_vec();
             let coder_result = if decoder_result == enc::CoderResult::InputEmpty && encoder_result == enc::CoderResult::InputEmpty {
                 enc::CoderResult::InputEmpty
