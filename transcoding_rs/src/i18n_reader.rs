@@ -2,7 +2,7 @@
 use encoding_rs as enc;
 use crate::Transcoder;
 
-pub struct I18nReaderFactory {
+pub struct I18nReaderEncodingDetector {
     bytes_to_guess: usize,
     non_ascii_to_guess: usize,
     non_text_threshold: u8,
@@ -16,12 +16,12 @@ pub struct I18nReaderFactory {
 }
 
 pub enum GuessResult<R: std::io::Read> {
-    InputEmpty,
+    NoInput,
     Success(I18nReader<R>, &'static enc::Encoding),
     Fail(I18nReader<R>),
 }
 
-impl I18nReaderFactory {
+impl I18nReaderEncodingDetector {
     pub fn new() -> Self {
         return Self {
             bytes_to_guess: 1024,
@@ -60,13 +60,13 @@ impl I18nReaderFactory {
         return self;
     }
 
-    pub fn guess_and_get<R>(self: Self, reader: R)
+    pub fn guess<R>(self: Self, reader: R)
         -> std::io::Result<GuessResult<R>>
         where R: std::io::Read {
-        return self.guess_and_get_with_dst_encoding(reader, enc::UTF_8);
+        return self.guess_with_dst_encoding(reader, enc::UTF_8);
     }
 
-    pub fn guess_and_get_with_dst_encoding<R>(mut self: Self, mut reader: R, dst_encoding: &'static enc::Encoding)
+    pub fn guess_with_dst_encoding<R>(mut self: Self, mut reader: R, dst_encoding: &'static enc::Encoding)
         -> std::io::Result<GuessResult<R>>
         where R: std::io::Read {
         let read_buf = &mut vec![0u8; self.bytes_to_guess];
@@ -76,7 +76,7 @@ impl I18nReaderFactory {
         if is_empty {
             self.eof = true;
             self.transcode_done = true;
-            return Ok(GuessResult::InputEmpty);
+            return Ok(GuessResult::NoInput);
         }
         let second = reader.read(&mut read_buf[buf_minus1..])?;
         self.eof = second == 0;
@@ -140,17 +140,17 @@ impl <R: std::io::Read> I18nReader<R> {
         };
     }
 
-    pub fn new_from_factory(reader: R, transcoder: Transcoder, factory: I18nReaderFactory) -> Self {
+    pub fn new_from_factory(reader: R, transcoder: Transcoder, detector: I18nReaderEncodingDetector) -> Self {
         return Self {
             reader,
-            buffer: factory.buffer,
-            read_buffer: factory.read_buffer,
-            write_buffer: factory.write_buffer,
+            buffer: detector.buffer,
+            read_buffer: detector.read_buffer,
+            write_buffer: detector.write_buffer,
             transcoder,
-            had_replacement_or_unmappable: factory.had_replacement_or_unmappable,
-            transcode_done: factory.transcode_done,
-            eof: factory.eof,
-            no_transcoding_needed: factory.no_transcoding_needed,
+            had_replacement_or_unmappable: detector.had_replacement_or_unmappable,
+            transcode_done: detector.transcode_done,
+            eof: detector.eof,
+            no_transcoding_needed: detector.no_transcoding_needed,
         };
     }
 
@@ -245,8 +245,8 @@ mod tests {
                 let test_data = path::Path::new("../test_data");
                 let ifile_handle = &mut std::fs::File::open(test_data.join($input_file)).unwrap();
                 let enc = enc::Encoding::for_label($enc.as_bytes());
-                let f = I18nReaderFactory::new().bytes_to_guess(512);
-                let r = f.guess_and_get_with_dst_encoding(ifile_handle, enc.unwrap()).unwrap();
+                let f = I18nReaderEncodingDetector::new().bytes_to_guess(512);
+                let r = f.guess_with_dst_encoding(ifile_handle, enc.unwrap()).unwrap();
                 if let GuessResult::Success(mut reader, _) = r {
                     let mut buff = Vec::new();
                     reader.read_to_end(&mut buff).unwrap();
@@ -269,8 +269,8 @@ mod tests {
     #[test]
     fn reader_small() {
         let src = b"\x83\x6E\x83\x8D\x81\x5B\x83\x8F\x81\x5B\x83\x8B\x83\x68";
-        let f = I18nReaderFactory::new().buffer_size(15);
-        let r = f.guess_and_get(src.as_ref()).unwrap();
+        let f = I18nReaderEncodingDetector::new().buffer_size(15);
+        let r = f.guess(src.as_ref()).unwrap();
         if let GuessResult::Success(mut reader, _) = r {
             let mut buff = [0u8; 4];
             let n = reader.read(&mut buff).unwrap();
@@ -285,8 +285,8 @@ mod tests {
     #[test]
     fn reader_fail() {
         let src = b"\x00\x00\x00\x00\x00\x00";
-        let f = I18nReaderFactory::new().bytes_to_guess(512);
-        let r = f.guess_and_get(src.as_ref()).unwrap();
+        let f = I18nReaderEncodingDetector::new().bytes_to_guess(512);
+        let r = f.guess(src.as_ref()).unwrap();
         if let GuessResult::Fail(mut reader) = r {
             let mut buff = [0u8; 1024];
             let n = reader.read(&mut buff).unwrap();
@@ -299,9 +299,9 @@ mod tests {
     #[test]
     fn reader_empty() {
         let src = b"";
-        let f = I18nReaderFactory::new();
-        let r = f.guess_and_get(src.as_ref()).unwrap();
-        if let GuessResult::InputEmpty = r {
+        let f = I18nReaderEncodingDetector::new();
+        let r = f.guess(src.as_ref()).unwrap();
+        if let GuessResult::NoInput = r {
         } else {
             panic!();
         }

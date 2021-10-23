@@ -8,13 +8,13 @@ use std::io;
 pub fn transcode(reader: &mut dyn io::Read, writer: &mut dyn io::Write, encoding: &'static enc::Encoding, opt: &option::Opt)
     -> Result<&'static enc::Encoding, error::TranscodeError> {
 
-    let factory = tc::I18nReaderFactory::new()
+    let detector = tc::I18nReaderEncodingDetector::new()
         .buffer_size(10 * 1024)
         .non_ascii_to_guess(opt.chars_to_guess)
         .non_text_threshold(opt.non_text_threshold);
-    let guess_result = factory.guess_and_get_with_dst_encoding(reader, encoding).map_err(map_read_err)?;
+    let guess_result = detector.guess_with_dst_encoding(reader, encoding).map_err(map_read_err)?;
     match guess_result {
-        tc::GuessResult::InputEmpty => {
+        tc::GuessResult::NoInput => {
             writer.write_all(&[]).map_err(map_write_err)?;
             return Ok(enc::UTF_8);
         },
