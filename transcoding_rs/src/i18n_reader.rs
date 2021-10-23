@@ -2,6 +2,7 @@
 use encoding_rs as enc;
 use crate::Transcoder;
 
+/// Encoding detector for I18nReader.
 pub struct I18nReaderEncodingDetector {
     bytes_to_guess: usize,
     non_ascii_to_guess: usize,
@@ -15,13 +16,45 @@ pub struct I18nReaderEncodingDetector {
     no_transcoding_needed: bool,
 }
 
+/// The result of the encoding detection.
 pub enum GuessResult<R: std::io::Read> {
+    /// The input was empty.
     NoInput,
+    /// The guess succeeded.
     Success(I18nReader<R>, &'static enc::Encoding),
+    /// The guess failed.
+    /// In case the input still needs to be read without transcoding,
+    /// this holds an I18nReader.
     Fail(I18nReader<R>),
 }
 
 impl I18nReaderEncodingDetector {
+    /// Creates a new `I18nReaderEncodingDetector`.
+    /// Options can be modified using method chaining.
+    ///
+    /// # Options
+    ///  - buffer size  
+    ///     Default is 8K bytes.
+    ///  - bytes_to_guess  
+    ///     How many bytes are used to guess.  
+    ///     Default is 1K bytes.  
+    ///  - non_ascii_to_guess  
+    ///     The number of non-ASCII characters to be used to guess the encoding.  
+    ///     Non-ASCII here includes non-textual characters.  
+    ///     Default is 100 characters.  
+    ///  - non_text_threshold  
+    ///     The threshold to determine the guess is failed.  
+    ///     The value should be specified in percentage.  
+    ///     Default is 0%.
+    ///
+    /// # Example
+    /// ```
+    /// let detector = transcoding_rs::I18nReaderEncodingDetector::new()
+    ///     .buffer_size(1024) // options can be changed by method chaining.
+    ///     .bytes_to_guess(512)
+    ///     .non_ascii_to_guess(10)
+    ///     .non_text_threshold(5);
+    /// ```
     pub fn new() -> Self {
         return Self {
             bytes_to_guess: 1024,
@@ -37,6 +70,7 @@ impl I18nReaderEncodingDetector {
         };
     }
 
+    /// Sets buffer size.
     pub fn buffer_size(mut self: Self, size: usize) -> Self {
         if size < 16 { // if the buffer is insufficient, let's ignore the specified size.
             return self;
@@ -45,27 +79,62 @@ impl I18nReaderEncodingDetector {
         return self;
     }
 
+    /// Sets bytes_to_guess.
     pub fn bytes_to_guess(mut self: Self, size: usize) -> Self {
         self.bytes_to_guess = size;
         return self;
     }
 
+    /// Sets non_text_threshold.
     pub fn non_text_threshold(mut self: Self, percent: u8) -> Self {
         self.non_text_threshold = percent;
         return self;
     }
 
+    /// Sets non_ascii_to_guess.
     pub fn non_ascii_to_guess(mut self: Self, num: usize) -> Self {
         self.non_ascii_to_guess = num;
         return self;
     }
 
+    /// Guesses the source encoding and return `GuessResult`,
+    /// setting the destination encoding to UTF-8.
+    ///
+    /// Once this method is called, the instance is no longer available,
+    /// since this method moves the ownership to the return value.
     pub fn guess<R>(self: Self, reader: R)
         -> std::io::Result<GuessResult<R>>
         where R: std::io::Read {
         return self.guess_with_dst_encoding(reader, enc::UTF_8);
     }
 
+    /// Guesses the source encoding and return `GuessResult`,
+    /// setting the destination encoding to the specified one.
+    ///
+    /// Once this method is called, the instance is no longer available,
+    /// since this method moves the ownership to the return value.
+    ///
+    /// # Example
+    /// ```
+    /// use std::io::Read;
+    ///
+    /// let dst_encoding = encoding_rs::EUC_JP;
+    /// let src = b"\x83\x6E\x83\x8D\x81\x5B"; // ハロー in SHIFT_JIS
+    /// let detector = transcoding_rs::I18nReaderEncodingDetector::new();
+    /// let guess_result = detector.guess_with_dst_encoding(
+    ///     src.as_ref(), // `slice` can be used, since it implments the `std::io::Read` trait.
+    ///     dst_encoding).unwrap();
+    /// match guess_result {
+    ///     transcoding_rs::GuessResult::Success(mut reader,enc) => {
+    ///         assert_eq!(encoding_rs::SHIFT_JIS, enc);
+    ///         let buf = &mut vec![0u8;128];
+    ///         let n = reader.read(buf).unwrap();
+    ///         let expected = b"\xA5\xCF\xA5\xED\xA1\xBC"; // ハロー in EUC_JP
+    ///         assert_eq!(expected, &buf[..n]);
+    ///     },
+    ///     _ => panic!()
+    /// }
+    /// ```
     pub fn guess_with_dst_encoding<R>(mut self: Self, mut reader: R, dst_encoding: &'static enc::Encoding)
         -> std::io::Result<GuessResult<R>>
         where R: std::io::Read {
@@ -112,6 +181,9 @@ impl I18nReaderEncodingDetector {
     }
 }
 
+/// Reader for non-UTF-8 input sources.
+/// Although this is mainly for non-UTF-8,
+/// reads the input source with zero overhead if no transcoding is needed
 pub struct I18nReader<R: std::io::Read> {
     reader: R,
     buffer: Vec<u8>,
@@ -126,6 +198,10 @@ pub struct I18nReader<R: std::io::Read> {
 
 impl <R: std::io::Read> I18nReader<R> {
 
+    /// Creates a new `I18nReader`.
+    /// `Transcoder` needs to have the source encoding.
+    /// If the source encoding can't be known in advance,
+    /// use `I18nReaderEncodingDetector`.
     pub fn new(reader: R, transcoder: Transcoder) -> Self {
         return Self {
             reader,
@@ -140,7 +216,7 @@ impl <R: std::io::Read> I18nReader<R> {
         };
     }
 
-    pub fn new_from_factory(reader: R, transcoder: Transcoder, detector: I18nReaderEncodingDetector) -> Self {
+    fn new_from_factory(reader: R, transcoder: Transcoder, detector: I18nReaderEncodingDetector) -> Self {
         return Self {
             reader,
             buffer: detector.buffer,
@@ -193,10 +269,17 @@ impl <R: std::io::Read> I18nReader<R> {
 
         return 0;
     }
+
+    /// Whether replacement characters or unmappable characters are seen so far.
+    pub fn had_replacement_or_unmappable(self: &Self) ->bool {
+        return self.had_replacement_or_unmappable;
+    }
 }
 
 impl <R: std::io::Read> std::io::Read for I18nReader<R> {
 
+    /// Reads the input using the specified source encoding and transcode to
+    /// UTF-8 or the specified destination encoding.
     fn read(self: &mut Self, buffer: &mut [u8]) -> std::io::Result<usize> {
 
         if buffer.len() == 0 {

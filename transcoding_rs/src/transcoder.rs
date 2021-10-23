@@ -67,9 +67,9 @@ impl Transcoder {
     }
 
     /// Transcodes the source encoding to the destination encoding.
-    /// Main functionality and usage are the same as decode_to_* or encode_fro_* methods in encoding_rs.
+    /// Main functionality and usage are the same as decode_to_* or encode_fro_* methods in [`encoding_rs`](https://github.com/hsivonen/encoding_rs).
     /// The key difference is that this function combined decode_to_* and encode_from_* methods
-    /// excluding *_without_no_replacement variants in encoding_rs.
+    /// excluding *_without_no_replacement variants in `encoding_rs`.
     /// So this function can transcode any given encoding to another as long as they are supported.
     ///
     /// # Parameters
@@ -78,7 +78,7 @@ impl Transcoder {
     ///  - last: Specify true if the input has reached EOF, or otherwise false.
     ///          This method can be called multiple times with this value being true,
     ///          until the method returns InputEmpty.
-    ///          After the time, no more method must not be called. Otherwise, a panic is raised.
+    ///          After that, no more method must not be called. Otherwise, a panic is raised.
     ///
     /// # Return values
     /// In addition to encoded data being written to `dst`, the guessed encoding and some information are returned by a tuple.
@@ -134,6 +134,10 @@ impl Transcoder {
     /// Guesses the source encoding and try to transcode input.
     /// This method should be called once before the `transcode()` method if `Transcode` is created with no source encoding provided.
     /// This method must not be called after `transcode()` is called.
+    ///
+    /// Note: UTF-16 files are needed to have a BOM to be automatically detected as the encoding.
+    /// This is because [`chardetng`](https://github.com/hsivonen/chardetng), on which this library
+    /// depends, does not support UTF-16 and this library added only BOM sniffing to detect UTF-16.
     ///
     /// # Parameters
     ///  - src: The input to be encoded.
@@ -268,6 +272,10 @@ impl Transcoder {
     }
 
 
+    /// Checks if the specified character is a non-text character or not.
+    /// Non-text characters here are the characters defined in
+    /// [the `file` command](https://github.com/file/file/blob/ac3fb1f582ea35c274ad776f26e57785c4cf976f/src/encoding.c#L236]),
+    /// plus the REPLACEMENT CHARACTER (U+FFFD).
     pub fn is_non_text(c: &char) -> bool {
         if let Ok(_) = constants::NON_TEXTS_FREQUENT.binary_search(&c) {
             return true;

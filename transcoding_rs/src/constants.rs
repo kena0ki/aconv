@@ -43,6 +43,7 @@ pub const NON_TEXTS: [char; 24] = [
     '\u{007F}', // Delete	DEL
 ];
 
+/// List of supported encodings.
 pub static ENCODINGS: [(&'static enc::Encoding, &'static str); 219] = [
     (&enc::BIG5_INIT,                 "big5",                 ),
     (&enc::BIG5_INIT,                 "big5-hkscs",           ),

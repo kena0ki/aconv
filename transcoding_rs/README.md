@@ -3,7 +3,9 @@
 Detects the source text encoding and transcodes to another.  
 Since this library depends on [`encoding_rs`](https://github.com/hsivonen/encoding_rs), available encodings are the ones defined in [the Encoding Standard](https://encoding.spec.whatwg.org).  
 
-Note: UTF-16 files are needed to have a BOM to be automatically detected as the encoding. This is because [`chardetng`](https://github.com/hsivonen/chardetng) does not support UTF-16 and this library added only BOM sniffing to detect UTF-16.  
+Note: UTF-16 files are needed to have a BOM to be automatically detected as the encoding.  
+      This is because [`chardetng`](https://github.com/hsivonen/chardetng), on which this library depends,  
+      does not support UTF-16 and this library added only BOM sniffing to detect UTF-16.  
 
 ## Usage
 
@@ -21,7 +23,7 @@ The below is the flow we roughly follow.
    Otherwise, emit an error message and output the input texts as it is.  
 
 #### Non-text characters  
-Characters that are treated as non-text in this library are the same [ones](https://github.com/file/file/blob/ac3fb1f582ea35c274ad776f26e57785c4cf976f/src/encoding.c#L236) in the `file` command, plus REPLACEMENT CHARACTER.  
+Characters that are treated as non-text in this library are the same [ones](https://github.com/file/file/blob/ac3fb1f582ea35c274ad776f26e57785c4cf976f/src/encoding.c#L236) in the `file` command, plus the REPLACEMENT CHARACTER.  
 Namely, U+0000 ~ U+0006, U+000e ~ U+001a, U+001c ~ U+001f, U+007f, and U+FFFD are treated as the non-text characters.  
 
 
