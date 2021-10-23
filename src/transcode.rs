@@ -10,7 +10,7 @@ pub fn transcode(reader: &mut dyn io::Read, writer: &mut dyn io::Write, encoding
 
     let detector = tc::I18nReaderEncodingDetector::new()
         .buffer_size(10 * 1024)
-        .non_ascii_to_guess(opt.chars_to_guess)
+        .non_ascii_to_guess(opt.non_ascii_to_guess)
         .non_text_threshold(opt.non_text_threshold);
     let guess_result = detector.guess_with_dst_encoding(reader, encoding).map_err(map_read_err)?;
     match guess_result {

@@ -33,11 +33,11 @@ pub struct Opt {
     #[structopt(name = "PERCENTAGE", short = "T", long = "non-text-threshold", default_value = "0")]
     pub non_text_threshold: u8,
 
-    /// Number of non-textual ascii characters to guess the encoding.
+    /// Number of non textual-ascii characters to guess the encoding.
     /// Around 100 characters are enough for most cases, but if the guess is not accurate, increasing the value
     /// might help.
-    #[structopt(name = "NUMBER", short = "c", long = "chars-to-guess", default_value = "100")]
-    pub chars_to_guess: usize,
+    #[structopt(name = "NUMBER", short = "A", long = "non_ascii_to_guess", default_value = "100")]
+    pub non_ascii_to_guess: usize,
 
     /// Only shows auto-detected encodings without decoded texts.
     #[structopt(short, long)]
@@ -55,7 +55,7 @@ pub struct Opt {
 impl Opt {
     pub fn new() -> Self {
         let mut opt = Opt::default();
-        opt.chars_to_guess = 100;
+        opt.non_ascii_to_guess = 100;
         opt.to_code = "UTF-8".into();
         return opt;
     }

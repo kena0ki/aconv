@@ -69,7 +69,7 @@ impl Transcoder {
         }
     }
 
-    pub fn guess_and_transcode(self: &mut Self, src: &[u8], dst: & mut [u8], chars_to_guess: usize, non_text_threshold: u8, eof: bool)
+    pub fn guess_and_transcode(self: &mut Self, src: &[u8], dst: & mut [u8], non_ascii_to_guess: usize, non_text_threshold: u8, eof: bool)
         -> (Option<&'static enc::Encoding>, enc::CoderResult, usize, usize, bool) {
 
         let mut detector = cd::EncodingDetector::new();
@@ -92,7 +92,7 @@ impl Transcoder {
                     let is_non_text = Transcoder::is_non_text(&(*b as char));
                     if is_non_ascii || is_non_text {
                         non_ascii_cnt+=1;
-                        if non_ascii_cnt > chars_to_guess {
+                        if non_ascii_cnt > non_ascii_to_guess {
                             break;
                         }
                     }
