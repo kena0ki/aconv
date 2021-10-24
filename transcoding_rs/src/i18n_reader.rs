@@ -21,9 +21,9 @@ pub struct I18nReaderEncodingDetector {
 pub enum GuessResult<R: std::io::Read> {
     /// The input was empty.
     NoInput,
-    /// The guess succeeded.
+    /// The guess_utf8 succeeded.
     Success(I18nReader<R>, &'static enc::Encoding),
-    /// The guess failed.
+    /// The guess_utf8 failed.
     /// In case the input still needs to be read without transcoding,
     /// this holds an I18nReader.
     Fail(I18nReader<R>),
@@ -37,14 +37,14 @@ impl I18nReaderEncodingDetector {
     ///  - buffer size  
     ///     Default is 8K bytes.
     ///  - bytes_to_guess  
-    ///     How many bytes are used to guess.  
+    ///     How many bytes are used to guess_utf8.  
     ///     Default is 1K bytes.  
     ///  - non_ascii_to_guess  
-    ///     The number of non-ASCII characters to be used to guess the encoding.  
+    ///     The number of non-ASCII characters to be used to guess_utf8 the encoding.  
     ///     Non-ASCII here includes non-textual characters.  
     ///     Default is 100 characters.  
     ///  - non_text_threshold  
-    ///     The threshold to determine the guess is failed.  
+    ///     The threshold to determine the guess_utfguess_utf8failed.  
     ///     The value should be specified in percentage.  
     ///     Default is 0%.
     ///  - add_bom_utf16  
@@ -113,10 +113,10 @@ impl I18nReaderEncodingDetector {
     ///
     /// Once this method is called, the instance is no longer available,
     /// since this method moves the ownership to the return value.
-    pub fn guess<R>(self: Self, reader: R)
+    pub fn guess_utf8<R>(self: Self, reader: R)
         -> std::io::Result<GuessResult<R>>
         where R: std::io::Read {
-        return self.guess_with_dst_encoding(reader, enc::UTF_8);
+        return self.guess(reader, enc::UTF_8);
     }
 
     /// Guesses the source encoding and return `GuessResult`,
@@ -132,7 +132,7 @@ impl I18nReaderEncodingDetector {
     /// let dst_encoding = encoding_rs::EUC_JP;
     /// let src = b"\x83\x6E\x83\x8D\x81\x5B"; // ハロー in SHIFT_JIS
     /// let detector = transcoding_rs::I18nReaderEncodingDetector::new();
-    /// let guess_result = detector.guess_with_dst_encoding(
+    /// let guess_result = detector.guess(
     ///     src.as_ref(), // `slice` can be used, since it implments the `std::io::Read` trait.
     ///     dst_encoding).unwrap();
     /// match guess_result {
@@ -146,7 +146,7 @@ impl I18nReaderEncodingDetector {
     ///     _ => panic!()
     /// }
     /// ```
-    pub fn guess_with_dst_encoding<R>(mut self: Self, mut reader: R, dst_encoding: &'static enc::Encoding)
+    pub fn guess<R>(mut self: Self, mut reader: R, dst_encoding: &'static enc::Encoding)
         -> std::io::Result<GuessResult<R>>
         where R: std::io::Read {
         let read_buf = &mut vec![0u8; self.bytes_to_guess];
@@ -340,7 +340,7 @@ mod tests {
                 let ifile_handle = &mut std::fs::File::open(test_data.join($input_file)).unwrap();
                 let enc = enc::Encoding::for_label($enc.as_bytes());
                 let f = I18nReaderEncodingDetector::new().bytes_to_guess(512);
-                let r = f.guess_with_dst_encoding(ifile_handle, enc.unwrap()).unwrap();
+                let r = f.guess(ifile_handle, enc.unwrap()).unwrap();
                 if let GuessResult::Success(mut reader, _) = r {
                     let mut buff = Vec::new();
                     reader.read_to_end(&mut buff).unwrap();
@@ -364,7 +364,7 @@ mod tests {
     fn reader_small() {
         let src = b"\x83\x6E\x83\x8D\x81\x5B\x83\x8F\x81\x5B\x83\x8B\x83\x68";
         let f = I18nReaderEncodingDetector::new().buffer_size(15);
-        let r = f.guess(src.as_ref()).unwrap();
+        let r = f.guess_utf8(src.as_ref()).unwrap();
         if let GuessResult::Success(mut reader, _) = r {
             let mut buff = [0u8; 4];
             let n = reader.read(&mut buff).unwrap();
@@ -380,7 +380,7 @@ mod tests {
     fn reader_fail() {
         let src = b"\x00\x00\x00\x00\x00\x00";
         let f = I18nReaderEncodingDetector::new().bytes_to_guess(512);
-        let r = f.guess(src.as_ref()).unwrap();
+        let r = f.guess_utf8(src.as_ref()).unwrap();
         if let GuessResult::Fail(mut reader) = r {
             let mut buff = [0u8; 1024];
             let n = reader.read(&mut buff).unwrap();
@@ -394,7 +394,7 @@ mod tests {
     fn reader_empty() {
         let src = b"";
         let f = I18nReaderEncodingDetector::new();
-        let r = f.guess(src.as_ref()).unwrap();
+        let r = f.guess_utf8(src.as_ref()).unwrap();
         if let GuessResult::NoInput = r {
         } else {
             panic!();
