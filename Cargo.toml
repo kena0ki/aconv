@@ -1,6 +1,6 @@
 [package]
 name = "aconv"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2018"
 authors = ["kena0ki"]
 license = "MIT OR Apache-2.0"
