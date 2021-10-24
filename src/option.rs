@@ -1,12 +1,13 @@
 use structopt::StructOpt;
 use std::path::PathBuf;
 
-/// Converts texts from the auto detected encoding to UTF-8 or a specified encoding.
-/// If malformed byte sequences as Unicode are found, they are replaced with REPLACEMENT CHARACTER(U+FFFD).
+/// Converts texts from the auto-detected encoding to UTF-8 or a specified encoding.
+/// If byte sequences that is malformed as Unicode are found,
+/// they are replaced with the REPLACEMENT CHARACTER(U+FFFD).
 /// If the destination encoding is not Unicode and unmappable characters are found, they are
 /// replaced with the corresponding numeric character references.
-/// If the auto-detection is considered it failed, the input texts are output as-is,
-/// meaning no conversion takes place, with an error message emitted.
+/// If the encoding detection is considered it failed, the input texts are output as-is,
+/// meaning no conversion takes place, and an error message is emitted.
 #[derive(StructOpt, Debug, Default)]
 #[structopt(verbatim_doc_comment, version=env!("CARGO_PKG_VERSION"))]
 pub struct Opt {
@@ -28,7 +29,7 @@ pub struct Opt {
     pub list: bool,
 
     /// The threshold (0-100) of non-text character occurrence.
-    /// Above this threshold in decoded texts, the auto-detection is treated as it failed.
+    /// Above this threshold in decoded UTF-8 texts, the encoding detection is treated as it failed.
     /// In that case the input texts are output as-is with an error message emitted.
     #[structopt(name = "PERCENTAGE", short = "T", long = "non-text-threshold", default_value = "0")]
     pub non_text_threshold: u8,
@@ -43,7 +44,7 @@ pub struct Opt {
     #[structopt(short, long)]
     pub show: bool,
 
-    /// Suppresses error messages when auto-detection failed.
+    /// Suppresses error messages when encoding detection failed.
     #[structopt(short, long)]
     pub quiet: bool,
 

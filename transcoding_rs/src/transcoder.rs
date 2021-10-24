@@ -135,10 +135,6 @@ impl Transcoder {
     /// This method should be called once before the `transcode()` method if `Transcode` is created with no source encoding provided.
     /// This method must not be called after `transcode()` is called.
     ///
-    /// Note: UTF-16 files are needed to have a BOM to be automatically detected as the encoding.
-    /// This is because [`chardetng`](https://github.com/hsivonen/chardetng), on which this library
-    /// depends, does not support UTF-16 and this library added only BOM sniffing to detect UTF-16.
-    ///
     /// # Parameters
     ///  - src: The input to be encoded.
     ///  - dst: The estination buffer the output is written to.
@@ -229,7 +225,7 @@ impl Transcoder {
             str::from_utf8_unchecked_mut(&mut decode_buffer[..num_decoder_written])
         };
         let mut non_text_cnt = 0;
-        let auto_detection_failed = if 0 < decode_buffer_str.chars().count() {
+        let guess_failed = if 0 < decode_buffer_str.chars().count() {
             for c in decode_buffer_str.chars() {
                 if Transcoder::is_non_text(&c) {
                     non_text_cnt+=1;
@@ -239,7 +235,7 @@ impl Transcoder {
         } else {
             true
         };
-        if auto_detection_failed {
+        if guess_failed {
             return (false, decoder_result, num_decoder_read, num_decoder_written, has_replacement);
         }
         if self.dst_encoding == enc::UTF_8 {

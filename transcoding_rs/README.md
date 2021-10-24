@@ -1,20 +1,26 @@
 # transcoding_rs  
 
-Detects the source text encoding and transcodes to another.  
-Since this library depends on [`encoding_rs`](https://github.com/hsivonen/encoding_rs), available encodings are the ones defined in [the Encoding Standard](https://encoding.spec.whatwg.org).  
+This is a transcoding library.
+Transcoding here means decoding the source texts and encoding them to the other encoding.
 
-Note: UTF-16 files are needed to have a BOM to be automatically detected as the encoding.  
-      This is because [`chardetng`](https://github.com/hsivonen/chardetng), on which this library depends,  
-      does not support UTF-16 and this library added only BOM sniffing to detect UTF-16.  
+There are two excellent crates [`chardetng`](https://github.com/hsivonen/chardetng) and [`encoding_rs`](https://github.com/hsivonen/encoding_rs).
+`chardetng` is created for encoding detection and `encoding_rs` can be used for transcoding.
+This library aims to transcode easy and efficient way by combining these two crates.
+
+Note: Supported encodings are the ones defined in [the Encoding Standard](https://encoding.spec.whatwg.org).  
+
+Note: UTF-16 files are needed to have a BOM to be detected as the encoding.  
+      This is because [`chardetng`](https://github.com/hsivonen/chardetng), on which this library depends, does not support UTF-16 and this library only added BOM sniffing to detect UTF-16.  
 
 ## Usage
+See the [document](https://docs.rs/assert_cmd/*/transcoding_rs/).
 
 ## How auto-detection works.  
 Since texts are internally just byte sequences, there is no way to detect the right encoding with 100% accuracy.  
 So we need to guess the right encoding somehow.  
 The below is the flow we roughly follow.  
 
-1. Do BOM sniffing. This is needed because [`chardetng`](https://github.com/hsivonen/chardetng) does not detect UTF-16.  
+1. Do BOM sniffing to detect UTF-16.  
    If a BOM is found, skip guessing the encoding.  
 2. Guess the encoding using `chardetng`.  
 3. Decode texts using `encoding_rs`.  
