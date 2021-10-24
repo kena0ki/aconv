@@ -15,7 +15,7 @@ Note: UTF-16 files are needed to have a BOM to be detected as the encoding.
 ## Usage
 See the [document](https://docs.rs/assert_cmd/*/transcoding_rs/).
 
-## How auto-detection works.  
+## How encoding detection works.  
 Since texts are internally just byte sequences, there is no way to detect the right encoding with 100% accuracy.  
 So we need to guess the right encoding somehow.  
 The below is the flow we roughly follow.  
