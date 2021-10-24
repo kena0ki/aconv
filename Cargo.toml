@@ -12,7 +12,7 @@ readme = "README.md"
 
 [dependencies]
 chardetng = "0.1.14"
-encoding_rs = "0.8.28"
+encoding_rs = { version = "0.8.28", features = ["fast-legacy-encode"] }
 structopt = "0.3.23"
 exitcode = "1.1.2"
 transcoding_rs = { path = "transcoding_rs" }
@@ -26,3 +26,4 @@ insta = "1.8.0"
 members = [
   "transcoding_rs",
 ]
+
