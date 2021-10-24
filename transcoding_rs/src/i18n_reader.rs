@@ -128,6 +128,7 @@ impl I18nReaderEncodingDetector {
     /// # Example
     /// ```
     /// use std::io::Read;
+    /// use encoding_rs;
     ///
     /// let dst_encoding = encoding_rs::EUC_JP;
     /// let src = b"\x83\x6E\x83\x8D\x81\x5B"; // ハロー in SHIFT_JIS

@@ -25,6 +25,8 @@ impl Transcoder {
     ///
     /// # Example
     /// ```
+    /// use encoding_rs;
+    ///
     /// let transcoder = transcoding_rs::Transcoder::new(
     ///     Some(encoding_rs::UTF_16BE),
     ///     encoding_rs::UTF_8
@@ -52,6 +54,8 @@ impl Transcoder {
     ///
     /// # Example
     /// ```
+    /// use encoding_rs;
+    ///
     /// let transcoder = transcoding_rs::Transcoder::new(
     ///     Some(encoding_rs::UTF_16BE),
     ///     encoding_rs::UTF_8)
@@ -90,6 +94,8 @@ impl Transcoder {
     ///
     /// # Example
     /// ```
+    /// use encoding_rs;
+    ///
     /// let mut transcoder = transcoding_rs::Transcoder::new(
     ///     Some(encoding_rs::SHIFT_JIS),
     ///     encoding_rs::UTF_8);
@@ -155,6 +161,8 @@ impl Transcoder {
     ///
     /// # Example
     /// ```
+    /// use encoding_rs;
+    ///
     /// let mut transcoder = transcoding_rs::Transcoder::new(
     ///     None, // Not provide the source encoding.
     ///     encoding_rs::UTF_8);
