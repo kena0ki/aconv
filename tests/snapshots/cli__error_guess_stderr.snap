@@ -3,4 +3,4 @@ source: tests/cli.rs
 expression: "std::str::from_utf8(&output.stderr).unwrap()"
 
 ---
-"-: Auto-detection seems to fail.\n"
+"-: Encoding detection seemed to fail.\n"

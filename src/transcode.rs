@@ -29,7 +29,7 @@ pub fn transcode(reader: &mut dyn io::Read, writer: &mut dyn io::Write, encoding
         tc::GuessResult::Fail(mut i18n_reader) => { // if no encoding is found
             // write input to output as-is
             io::copy(&mut i18n_reader, writer).map(|_| ()).map_err(map_write_err)?;
-            return Err(error::TranscodeError::Guess("Auto-detection seems to fail.".into()));
+            return Err(error::TranscodeError::Guess("Encoding detection seemed to fail.".into()));
         }
     }
 }

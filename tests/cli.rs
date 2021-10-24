@@ -128,6 +128,16 @@ fn error_guess_file_quiet() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+#[test]
+fn error_guess_dir() -> Result<(), Box<dyn std::error::Error>> {
+    let mut cmd = Command::cargo_bin("aconv")?;
+    let assert = cmd.arg("test_data/error_guess_dir").assert().failure();
+    let output = assert.get_output();
+    insta::assert_debug_snapshot!("error_guess_dir_stdout", std::str::from_utf8(&output.stdout).unwrap());
+    insta::assert_display_snapshot!("error_guess_dir_stderr", std::str::from_utf8(&output.stderr).unwrap());
+    Ok(())
+}
+
 fn assert_directories(left_str: &str, right_str: &str) {
     let left_root = std::path::PathBuf::from(left_str);
     let right_root = std::path::PathBuf::from(right_str);

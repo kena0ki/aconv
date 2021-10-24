@@ -91,18 +91,27 @@ fn traverse(writer_opt: &mut Option<&mut dyn io::Write>, to_code: &'static enc::
     if in_path.is_dir() {
         let dir_ent = fs::read_dir(in_path)
             .map_err(|e| error::Error::Io { source: e, path: in_path.to_owned(), message: "Error reading the directory".into() })?;
+        let mut result: Result<(), error::Error> = Ok(());
         for child in dir_ent {
             let c = child
                 .map_err(|e| error::Error::Io { source: e, path: in_path.to_owned(), message: "Error reading the directory".into() })?;
             let child_path = &c.path();
+            let out_dir;
+            let mut out_dir_opt=None;
             if let Some(current_out_dir) = dir_opt {
-                let out_dir = &current_out_dir.join(in_path.file_name().unwrap());
-                traverse(&mut None, to_code, child_path, Some(out_dir), in_root, in_root_can, opt)?;
-            } else {
-                traverse(writer_opt, to_code, child_path, None, in_root, in_root_can, opt)?;
+                out_dir = current_out_dir.join(in_path.file_name().unwrap());
+                out_dir_opt = Some(&out_dir);
+            }
+            let ret = traverse(writer_opt, to_code, child_path, out_dir_opt, in_root, in_root_can, opt);
+            if let Err(err) = ret {
+                if err.is_guess() {
+                    result = Err(err);
+                } else {
+                    return Err(err);
+                }
             }
         }
-        return Ok(());
+        return result;
     } else {
         let mut ofile;
         let writer: &mut dyn io::Write = if let Some(dir_path) = dir_opt {
