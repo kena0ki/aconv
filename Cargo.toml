@@ -15,7 +15,7 @@ chardetng = "0.1.14"
 encoding_rs = { version = "0.8.28", features = ["fast-legacy-encode"] }
 structopt = "0.3.23"
 exitcode = "1.1.2"
-transcoding_rs = { path = "transcoding_rs" }
+transcoding_rs = { version = "0.1.0", path = "transcoding_rs" }
 
 [dev-dependencies]
 assert_cmd = "2.0.2"
