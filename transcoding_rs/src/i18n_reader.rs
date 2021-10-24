@@ -14,6 +14,7 @@ pub struct I18nReaderEncodingDetector {
     transcode_done: bool,
     eof: bool,
     no_transcoding_needed: bool,
+    add_bom_utf16: bool,
 }
 
 /// The result of the encoding detection.
@@ -46,6 +47,8 @@ impl I18nReaderEncodingDetector {
     ///     The threshold to determine the guess is failed.  
     ///     The value should be specified in percentage.  
     ///     Default is 0%.
+    ///  - add_bom_utf16  
+    ///     If it's true and a BOM is not found at the head of the input, a BOM is added.
     ///
     /// # Example
     /// ```
@@ -53,7 +56,8 @@ impl I18nReaderEncodingDetector {
     ///     .buffer_size(1024) // options can be changed by method chaining.
     ///     .bytes_to_guess(512)
     ///     .non_ascii_to_guess(10)
-    ///     .non_text_threshold(5);
+    ///     .non_text_threshold(5)
+    ///     .add_bom_utf16(true);
     /// ```
     pub fn new() -> Self {
         return Self {
@@ -67,6 +71,7 @@ impl I18nReaderEncodingDetector {
             transcode_done: false,
             eof: false,
             no_transcoding_needed: false,
+            add_bom_utf16: false,
         };
     }
 
@@ -94,6 +99,12 @@ impl I18nReaderEncodingDetector {
     /// Sets non_ascii_to_guess.
     pub fn non_ascii_to_guess(mut self: Self, num: usize) -> Self {
         self.non_ascii_to_guess = num;
+        return self;
+    }
+
+    /// Sets add_bom_utf16.
+    pub fn add_bom_utf16(mut self: Self, add_bom: bool) -> Self {
+        self.add_bom_utf16 = add_bom;
         return self;
     }
 
@@ -164,9 +175,9 @@ impl I18nReaderEncodingDetector {
             self.had_replacement_or_unmappable = has_replacement;
             self.read_buffer = src[num_read..].into();
             self.write_buffer = {
-                if dst_encoding == enc::UTF_16BE && [0xFE,0xFF] != self.buffer[..2] {
+                if self.add_bom_utf16 && dst_encoding == enc::UTF_16BE && [0xFE,0xFF] != self.buffer[..2] {
                     [b"\xFE\xFF", &self.buffer[..num_written]].concat() // add a BOM
-                } else if dst_encoding == enc::UTF_16LE && [0xFF,0xFE] != self.buffer[..2] {
+                } else if self.add_bom_utf16 && dst_encoding == enc::UTF_16LE && [0xFF,0xFE] != self.buffer[..2] {
                     [b"\xFF\xFE", &self.buffer[..num_written]].concat() // add a BOM
                 } else{
                     self.buffer[..num_written].into()
