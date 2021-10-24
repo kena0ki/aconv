@@ -71,7 +71,7 @@ impl Transcoder {
     }
 
     /// Transcodes the source encoding to the destination encoding.
-    /// Main functionality and usage are the same as decode_to_* or encode_fro_* methods in [`encoding_rs`](https://github.com/hsivonen/encoding_rs).
+    /// Main functionality and usage are the same as decode_to_* or encode_from_* methods in [`encoding_rs`](https://github.com/hsivonen/encoding_rs).
     /// The key difference is that this function combined decode_to_* and encode_from_* methods
     /// excluding *_without_no_replacement variants in `encoding_rs`.
     /// So this function can transcode any given encoding to another as long as they are supported.
