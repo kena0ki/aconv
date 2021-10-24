@@ -13,7 +13,7 @@ Note: UTF-16 files are needed to have a BOM to be detected as the encoding.
       This is because [`chardetng`](https://github.com/hsivonen/chardetng), on which this library depends, does not support UTF-16 and this library only added BOM sniffing to detect UTF-16.  
 
 ## Usage
-See the [document](https://docs.rs/assert_cmd/*/transcoding_rs/).
+See the [document](https://docs.rs/transcoding_rs).
 
 ## How encoding detection works.  
 Since texts are internally just byte sequences, there is no way to detect the right encoding with 100% accuracy.  
