@@ -5,7 +5,6 @@ edition = "2018"
 authors = ["kena0ki"]
 license = "MIT OR Apache-2.0"
 description = "Converts text encoding the easy and efficient way"
-documentation = "https://docs.rs/transcoding_rs"
 repository = "https://github.com/kena0ki/aconv/transcoding_rs"
 keywords = ["encoding", "unicode", "i18n", "CJK", "reader"]
 categories = ["Encoding", "Text processing", "Internationalization (i18n)"]
