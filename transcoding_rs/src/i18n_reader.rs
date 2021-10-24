@@ -3,6 +3,7 @@ use encoding_rs as enc;
 use crate::Transcoder;
 
 /// Encoding detector for I18nReader.
+#[derive(Debug)]
 pub struct I18nReaderEncodingDetector {
     bytes_to_guess: usize,
     non_ascii_to_guess: usize,
