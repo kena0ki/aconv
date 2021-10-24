@@ -5,13 +5,10 @@ edition = "2018"
 authors = ["kena0ki"]
 license = "MIT OR Apache-2.0"
 description = "Converts texts from the auto-detected encoding to UTF-8 or a specified encoding"
-documentation = "https://docs.rs/aconv"
 repository = "https://github.com/kena0ki/aconv"
-keywords = ["encoding", "UTF-8", "unicode", "charset", "i18n" , "CJK"]
+keywords = ["encoding", "unicode", "i18n", "CJK", "iconv"]
 categories = ["Encoding", "Command line utilities", "Text processing", "Internationalization (i18n)"]
 readme = "README.md"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 chardetng = "0.1.14"
@@ -22,7 +19,6 @@ transcoding_rs = { path = "transcoding_rs" }
 
 [dev-dependencies]
 assert_cmd = "2.0.2"
-# predicates = "2.0.3"
 walkdir = "2"
 insta = "1.8.0"
 

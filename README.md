@@ -1,6 +1,11 @@
 # aconv  
 
 Converts texts from the auto-detected encoding to UTF-8 or a specified encoding.  
+This is similar to the `iconv` command but differences are following.  
+  - Detects encoding if the source encoding is not specified.
+  - Replaces malformed byte sequences with the REPLACEMENT CHARACTER or the corresponding numeric character reference, which depends on the destination charset (i.e. Unicode or not).
+  - Can recursively convert files in directories and output converted files to the specified directory preserving the directory hierarchy.
+
 Since this library depends on [`encoding_rs`](https://github.com/hsivonen/encoding_rs), available encodings are the ones defined in [the Encoding Standard](https://encoding.spec.whatwg.org).  
 
 Note: UTF-16 files are needed to have a BOM to be detected as the encoding.  

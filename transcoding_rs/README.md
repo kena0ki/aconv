@@ -1,11 +1,11 @@
 # transcoding_rs  
 
 This is a transcoding library.
-Transcoding here means decoding the source texts and encoding them to the other encoding.
+Transcoding here means converting text encoding to another.
 
 There are two excellent crates [`chardetng`](https://github.com/hsivonen/chardetng) and [`encoding_rs`](https://github.com/hsivonen/encoding_rs).
 `chardetng` is created for encoding detection and `encoding_rs` can be used for transcoding.
-This library aims to transcode easy and efficient way by combining these two crates.
+This library aims to transcode the easy and efficient way by combining these two crates.
 
 Note: Supported encodings are the ones defined in [the Encoding Standard](https://encoding.spec.whatwg.org).  
 
