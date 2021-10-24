@@ -1,0 +1,8 @@
+---
+source: tests/cli.rs
+expression: "std::str::from_utf8(&output.stderr).unwrap()"
+
+---
+test_data/error_guess_dir/nullchars.txt: Encoding detection seemed to fail.
+test_data/error_guess_dir/nullchars2.txt: Encoding detection seemed to fail.
+
