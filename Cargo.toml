@@ -7,8 +7,13 @@ license = "MIT OR Apache-2.0"
 description = "Converts texts from the auto-detected encoding to UTF-8 or a specified encoding"
 repository = "https://github.com/kena0ki/aconv"
 keywords = ["encoding", "unicode", "i18n", "CJK", "iconv"]
-categories = ["Encoding", "Command line utilities", "Text processing", "Internationalization (i18n)"]
+categories = ["encoding", "text-processing", "internationalization", "command-line-utilities"]
 readme = "README.md"
+exclude = [
+  "test_data/",
+  "tests/",
+  "output/",
+]
 
 [dependencies]
 chardetng = "0.1.14"
