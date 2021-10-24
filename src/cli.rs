@@ -38,6 +38,10 @@ fn run(opt: &option::Opt) -> Result<(), error::Error> {
                 stdout_lock = stdout.lock();
                 writer = Some(&mut stdout_lock);
             } else {
+                if ! out_path.is_dir() {
+                    fs::create_dir(&out_path)
+                        .map_err(|e| error::Error::Io { source: e, path: out_path.to_owned(), message: "Error creating the directory".into() })?;
+                }
                 dir_opt = Some(out_path);
             }
         },
@@ -89,20 +93,26 @@ fn traverse(writer_opt: &mut Option<&mut dyn io::Write>, to_code: &'static enc::
      in_path: &path::PathBuf, dir_opt: Option<&path::PathBuf>, in_root: &path::PathBuf, in_root_can: &path::PathBuf, opt: &option::Opt)
     -> Result<(), error::Error> {
     if in_path.is_dir() {
+        let next_out_dir_opt= {
+            if let Some(current_out_dir) = dir_opt {
+                let next_out_dir = current_out_dir.join(in_path.file_name().unwrap());
+                if ! next_out_dir.is_dir() {
+                    fs::create_dir(&next_out_dir)
+                        .map_err(|e| error::Error::Io { source: e, path: next_out_dir.to_owned(), message: "Error creating the directory".into() })?;
+                }
+                Some(next_out_dir)
+            } else {
+                None
+            }
+        };
+        let mut result: Result<(), error::Error> = Ok(());
         let dir_ent = fs::read_dir(in_path)
             .map_err(|e| error::Error::Io { source: e, path: in_path.to_owned(), message: "Error reading the directory".into() })?;
-        let mut result: Result<(), error::Error> = Ok(());
         for child in dir_ent {
             let c = child
                 .map_err(|e| error::Error::Io { source: e, path: in_path.to_owned(), message: "Error reading the directory".into() })?;
             let child_path = &c.path();
-            let out_dir;
-            let mut out_dir_opt=None;
-            if let Some(current_out_dir) = dir_opt {
-                out_dir = current_out_dir.join(in_path.file_name().unwrap());
-                out_dir_opt = Some(&out_dir);
-            }
-            let ret = traverse(writer_opt, to_code, child_path, out_dir_opt, in_root, in_root_can, opt);
+            let ret = traverse(writer_opt, to_code, child_path, next_out_dir_opt.as_ref(), in_root, in_root_can, opt);
             if let Err(err) = ret {
                 if err.is_guess() {
                     result = Err(err);
@@ -115,7 +125,6 @@ fn traverse(writer_opt: &mut Option<&mut dyn io::Write>, to_code: &'static enc::
     } else {
         let mut ofile;
         let writer: &mut dyn io::Write = if let Some(dir_path) = dir_opt {
-            create_dir_recursive(dir_path)?;
             let out_path = &dir_path.join(in_path.file_name().unwrap());
             ofile =fs::File::create(out_path)
                 .map_err(|e| error::Error::Io { source: e, path: out_path.to_owned(), message: "Error creating the file".into() })?;
@@ -157,19 +166,6 @@ fn traverse(writer_opt: &mut Option<&mut dyn io::Write>, to_code: &'static enc::
             }
         }
     }
-}
-
-fn create_dir_recursive(path: &path::PathBuf)
-    -> Result<(), error::Error> {
-    let path_to_create = &mut path::PathBuf::new();
-    for p in path.iter() {
-        path_to_create.push(p);
-        if ! path_to_create.is_dir() {
-            fs::create_dir(&path_to_create)
-                .map_err(|e| error::Error::Io { source: e, path: path_to_create.to_owned(), message: "Error creating the directory".into() })?;
-        }
-    }
-    return Ok(());
 }
 
 fn list() {

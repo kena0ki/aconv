@@ -6,6 +6,10 @@ use insta;
 
 #[test]
 fn dir_to_dir() -> Result<(), Box<dyn std::error::Error>> {
+    let empty_dir = std::path::PathBuf::from("test_data/dir_to_dir/child/empty_dir/");
+    if ! empty_dir.is_dir() {
+        std::fs::create_dir(empty_dir).unwrap(); // Git can't track empty dirs, so let's make it.
+    }
     let mut cmd = Command::cargo_bin("aconv")?;
     let cmd = cmd.arg("test_data/dir_to_dir")
         .args(&["-o","output"])
