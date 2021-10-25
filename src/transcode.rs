@@ -13,10 +13,10 @@ pub fn transcode(reader: &mut dyn io::Read, writer: &mut dyn io::Write, encoding
     let map_read_err = |err :io::Error| -> error::Error {
         error::Error::Io { source: err, path: relative_path.into(), message: "Error reading the file".into() }
     };
-    let map_write_err= |err :io::Error| -> Result<(), error::Error> {
+    let map_write_err= |err :io::Error| -> error::Error {
         match err.kind() {
-            io::ErrorKind::BrokenPipe => Ok(()), // Ignore broken pipe error. rust-lang/rust#46016
-            _ => Err(error::Error::Io { source: err, path: relative_path.into(), message: "Error writing the file".into() })
+            io::ErrorKind::BrokenPipe => error::Error::BrokenPipe, // Ignore broken pipe error. rust-lang/rust#46016
+            _ => error::Error::Io { source: err, path: relative_path.into(), message: "Error writing the file".into() }
         }
     };
     let detector = tc::I18nReaderEncodingDetector::new()
@@ -28,30 +28,30 @@ pub fn transcode(reader: &mut dyn io::Read, writer: &mut dyn io::Write, encoding
     match guess_result {
         tc::GuessResult::NoInput => {
             if opt.show {
-                writer.write_fmt(format_args!("{}: {}\n", relative_path.to_string_lossy(), enc::UTF_8.name())).or_else(map_write_err)?;
+                writer.write_fmt(format_args!("{}: {}\n", relative_path.to_string_lossy(), enc::UTF_8.name())).map_err(map_write_err)?;
             } else {
-                writer.write_all(&[]).or_else(map_write_err)?;
+                writer.write_all(&[]).map_err(map_write_err)?;
             }
             return Ok(());
         },
         tc::GuessResult::Success(mut i18n_reader, enc) => {
             if opt.show {
-                writer.write_fmt(format_args!("{}: {}\n", relative_path.to_string_lossy(), enc.name())).or_else(map_write_err)?;
+                writer.write_fmt(format_args!("{}: {}\n", relative_path.to_string_lossy(), enc.name())).map_err(map_write_err)?;
             } else {
-                io::copy(&mut i18n_reader, writer).map(|_| ()).or_else(map_write_err)?;
+                io::copy(&mut i18n_reader, writer).map(|_| ()).map_err(map_write_err)?;
             }
             return Ok(());
         },
         tc::GuessResult::Fail(mut i18n_reader) => { // if no encoding is found
             if ! opt.show {
-                io::copy(&mut i18n_reader, writer).map(|_| ()).or_else(map_write_err)?; // write input to output as-is
+                io::copy(&mut i18n_reader, writer).map(|_| ()).map_err(map_write_err)?; // write input to output as-is
             }
             if opt.quiet {
                 return Ok(());
             }
             let msg = "Encoding detection seemed to fail.";
             let mut stderr = std::io::stderr();
-            stderr.write_fmt(format_args!("{}: {}\n", relative_path.to_string_lossy(), msg)).or_else(map_write_err)?;
+            stderr.write_fmt(format_args!("{}: {}\n", relative_path.to_string_lossy(), msg)).map_err(map_write_err)?;
             return Err(error::Error::Guess(msg.into()));
         }
     }

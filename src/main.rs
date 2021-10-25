@@ -6,7 +6,7 @@ fn main() -> () {
     let opt: option::Opt = StructOpt::from_args();
     match cli::dispatch(&opt) {
         Err(err) => {
-            if ! err.is_guess() {
+            if ! err.is_guess() && ! err.is_broken_pipe() {
                 eprintln!("{}", err);
             }
             std::process::exit(err.error_code());
