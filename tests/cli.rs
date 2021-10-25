@@ -77,7 +77,7 @@ fn show() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn version() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin("aconv")?;
-    let assert = cmd.arg("-v").assert();
+    let assert = cmd.arg("-V").assert();
     let expected = format!("{} {}\n", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
     assert.stdout(expected);
     Ok(())

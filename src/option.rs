@@ -12,7 +12,7 @@ use std::path::PathBuf;
 #[structopt(verbatim_doc_comment, version=env!("CARGO_PKG_VERSION"))]
 pub struct Opt {
     /// Prints version information.
-    #[structopt(short, long)]
+    #[structopt(short="V", long)]
     pub version: bool,
 
     /// The encoding of the output.
