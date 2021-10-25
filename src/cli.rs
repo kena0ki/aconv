@@ -5,6 +5,7 @@ use crate::error;
 use encoding_rs as enc;
 use transcoding_rs as tc;
 use std::io;
+use std::io::Write;
 use std::fs;
 use std::path;
 
@@ -27,37 +28,32 @@ fn run(opt: &option::Opt) -> Result<(), error::Error> {
         Some(e) => e,
     };
 
+    let in_paths = &opt.paths;
     let stdout = std::io::stdout();
     let mut stdout_lock;
-    let mut writer: Option<&mut dyn io::Write>=None;
-    let mut dir_opt: Option<&path::PathBuf>=None;
-    let in_paths = &opt.paths;
-    match opt.output.as_ref() {
-        Some(out_path) => {
-            if in_paths.len() == 0 {
-                stdout_lock = stdout.lock();
-                writer = Some(&mut stdout_lock);
-            } else {
-                if ! out_path.is_dir() {
-                    fs::create_dir(&out_path)
-                        .map_err(|e| error::Error::Io { source: e, path: out_path.to_owned(), message: "Error creating the directory".into() })?;
-                }
-                dir_opt = Some(out_path);
+    let (mut writer_opt, dir_opt): (Option<&mut dyn io::Write>,Option<&path::PathBuf>)  = {
+        if ! opt.show && in_paths.len() > 0 && opt.output.is_some() {
+            let out_path = opt.output.as_ref().unwrap();
+            if ! out_path.is_dir() {
+                fs::create_dir(&out_path)
+                    .map_err(|e| error::Error::Io { source: e, path: out_path.to_owned(), message: "Error creating the directory".into() })?;
             }
-        },
-        None => {
+            (None, Some(out_path))
+        } else {
             stdout_lock = stdout.lock();
-            writer = Some(&mut stdout_lock);
-        },
+            (Some(&mut stdout_lock), None)
+        }
     };
 
     if in_paths.len() == 0 {
         let stdin = &mut std::io::stdin();
-        let rslt = transcode::transcode(stdin, writer.unwrap(), to_code, &opt);
+        let writer = writer_opt.unwrap();
+        let rslt = transcode::transcode(stdin, writer, to_code, &opt);
         match rslt {
             Ok(enc) => {
                 if opt.show {
-                    println!("-: {}", enc.name());
+                    writer.write_fmt(format_args!("-: {}\n", enc.name()))
+                        .map_err(|e| error::Error::Io { source: e, path: "-".into(), message: "Error writing the file".into() })?;
                 }
                 return Ok(());
             },
@@ -66,7 +62,9 @@ fn run(opt: &option::Opt) -> Result<(), error::Error> {
                     if opt.quiet {
                         return Ok(());
                     }
-                    eprintln!("-: {}", msg);
+                    let mut stderr = std::io::stderr();
+                    stderr.write_fmt(format_args!("-: {}\n", msg))
+                        .map_err(|e| error::Error::Io { source: e, path: "-".into(), message: "Error writing the file".into() })?;
                 }
                 return Err(err.into());
             }
@@ -83,7 +81,7 @@ fn run(opt: &option::Opt) -> Result<(), error::Error> {
             let in_path = &in_paths[i];
             let in_path_can = &fs::canonicalize(&in_path)
                 .map_err(|e| error::Error::Io { source: e, path: in_path.to_owned(), message: "Error reading the file or directory".into() })?;
-            traverse(&mut writer, to_code, in_path, dir_opt, in_path, in_path_can, opt)?;
+            traverse(&mut writer_opt, to_code, in_path, dir_opt, in_path, in_path_can, opt)?;
         }
         return Ok(());
     }
@@ -145,22 +143,25 @@ fn traverse(writer_opt: &mut Option<&mut dyn io::Write>, to_code: &'static enc::
         match rslt {
             Ok(enc) => {
                 if opt.show {
-                    println!("{}: {}", relative_path().to_string_lossy(), enc.name());
+                    writer.write_fmt(format_args!("{}: {}\n", relative_path().to_string_lossy(), enc.name()))
+                        .map_err(|e| error::Error::Io { source: e, path: relative_path().into(), message: "Error writing the file".into() })?;
                 }
                 return Ok(());
             },
             Err(err) => {
                 if let error::TranscodeError::Read(source) = err {
-                    return Err(error::Error::Io { source, path: in_path.to_owned(), message: "Error reading the file".into() });
+                    return Err(error::Error::Io { source, path: relative_path().into(), message: "Error reading the file".into() });
                 }
                 if let error::TranscodeError::Write(source) = err {
-                    return Err(error::Error::Io { source, path: in_path.to_owned(), message: "Error writing the file".into() });
+                    return Err(error::Error::Io { source, path: relative_path().into(), message: "Error writing the file".into() });
                 }
                 if let error::TranscodeError::Guess(msg) = &err {
                     if opt.quiet {
                         return Ok(());
                     }
-                    eprintln!("{}: {}", relative_path().to_string_lossy(), msg);
+                    let mut stderr = std::io::stderr();
+                    stderr.write_fmt(format_args!("{}: {}\n", relative_path().to_string_lossy(), msg))
+                        .map_err(|e| error::Error::Io { source: e, path: relative_path().into(), message: "Error writing the file".into() })?;
                 }
                 return Err(err.into());
             }
