@@ -36,7 +36,7 @@ FLAGS:
     -l, --list       Prints supported encodings
     -q, --quiet      Suppresses error messages when encoding detection failed
     -s, --show       Only shows auto-detected encodings without decoded texts
-    -v, --version    Prints version information
+    -V, --version    Prints version information
 
 OPTIONS:
     -o, --output <DIRECTORY>                 Output directory. If input arguments contain directories, the directory
