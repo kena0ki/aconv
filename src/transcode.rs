@@ -4,10 +4,21 @@ use crate::error;
 use transcoding_rs as tc;
 use encoding_rs as enc;
 use std::io;
+use std::io::Write;
+use std::path;
 
-pub fn transcode(reader: &mut dyn io::Read, writer: &mut dyn io::Write, encoding: &'static enc::Encoding, opt: &option::Opt)
-    -> Result<&'static enc::Encoding, error::TranscodeError> {
+pub fn transcode(reader: &mut dyn io::Read, writer: &mut dyn io::Write, encoding: &'static enc::Encoding, opt: &option::Opt, relative_path: &path::PathBuf)
+    -> Result<(), error::Error> {
 
+    let map_read_err = |err :io::Error| -> error::Error {
+        error::Error::Io { source: err, path: relative_path.into(), message: "Error reading the file".into() }
+    };
+    let map_write_err= |err :io::Error| -> Result<(), error::Error> {
+        match err.kind() {
+            io::ErrorKind::BrokenPipe => Ok(()), // Ignore broken pipe error. rust-lang/rust#46016
+            _ => Err(error::Error::Io { source: err, path: relative_path.into(), message: "Error writing the file".into() })
+        }
+    };
     let detector = tc::I18nReaderEncodingDetector::new()
         .buffer_size(10 * 1024)
         .non_ascii_to_guess(opt.non_ascii_to_guess)
@@ -16,30 +27,34 @@ pub fn transcode(reader: &mut dyn io::Read, writer: &mut dyn io::Write, encoding
     let guess_result = detector.guess(reader, encoding).map_err(map_read_err)?;
     match guess_result {
         tc::GuessResult::NoInput => {
-            writer.write_all(&[]).map_err(map_write_err)?;
-            return Ok(enc::UTF_8);
+            if opt.show {
+                writer.write_fmt(format_args!("{}: {}\n", relative_path.to_string_lossy(), enc::UTF_8.name())).or_else(map_write_err)?;
+            } else {
+                writer.write_all(&[]).or_else(map_write_err)?;
+            }
+            return Ok(());
         },
         tc::GuessResult::Success(mut i18n_reader, enc) => {
             if opt.show {
-                return Ok(enc);
+                writer.write_fmt(format_args!("{}: {}\n", relative_path.to_string_lossy(), enc.name())).or_else(map_write_err)?;
+            } else {
+                io::copy(&mut i18n_reader, writer).map(|_| ()).or_else(map_write_err)?;
             }
-            io::copy(&mut i18n_reader, writer).map(|_| ()).map_err(map_write_err)?;
-            return Ok(enc);
+            return Ok(());
         },
         tc::GuessResult::Fail(mut i18n_reader) => { // if no encoding is found
-            // write input to output as-is
-            io::copy(&mut i18n_reader, writer).map(|_| ()).map_err(map_write_err)?;
-            return Err(error::TranscodeError::Guess("Encoding detection seemed to fail.".into()));
+            if ! opt.show {
+                io::copy(&mut i18n_reader, writer).map(|_| ()).or_else(map_write_err)?; // write input to output as-is
+            }
+            if opt.quiet {
+                return Ok(());
+            }
+            let msg = "Encoding detection seemed to fail.";
+            let mut stderr = std::io::stderr();
+            stderr.write_fmt(format_args!("{}: {}\n", relative_path.to_string_lossy(), msg)).or_else(map_write_err)?;
+            return Err(error::Error::Guess(msg.into()));
         }
     }
-}
-
-fn map_write_err(err: io::Error) -> error::TranscodeError {
-    return error::TranscodeError::Write(err);
-}
-
-fn map_read_err(err: io::Error) -> error::TranscodeError {
-    return error::TranscodeError::Read(err);
 }
 
 #[cfg(test)]
@@ -56,7 +71,7 @@ mod tests {
                 let ifile_handle = &mut std::fs::File::open(test_data.join($input_file)).unwrap();
                 let enc = super::enc::Encoding::for_label($enc.as_bytes()).unwrap_or(&super::enc::UTF_8_INIT);
                 let output = &mut Vec::with_capacity(20*1024);
-                let _ = super::transcode(ifile_handle, output, enc, &opt);
+                let _ = super::transcode(ifile_handle, output, enc, &opt, &"_".into());
                 let efile_handle = &mut std::fs::File::open(test_data.join($expected_file)).unwrap();
                 let expected_string = &mut Vec::with_capacity(20*1024);
                 efile_handle.read_to_end(expected_string).unwrap();
