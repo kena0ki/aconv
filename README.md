@@ -20,7 +20,6 @@ cargo install aconv
 
 ## Usage
 ```
-aconv 0.1.0
 Converts texts from the auto-detected encoding to UTF-8 or a specified encoding.
 If byte sequences that is malformed as Unicode are found,
 they are replaced with the REPLACEMENT CHARACTER(U+FFFD).
