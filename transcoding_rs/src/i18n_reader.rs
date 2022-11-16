@@ -135,7 +135,7 @@ impl I18nReaderEncodingDetector {
     /// let src = b"\x83\x6E\x83\x8D\x81\x5B"; // ハロー in SHIFT_JIS
     /// let detector = transcoding_rs::I18nReaderEncodingDetector::new();
     /// let guess_result = detector.guess(
-    ///     src.as_ref(), // `slice` can be used, since it implments the `std::io::Read` trait.
+    ///     src.as_ref(), // `slice` can be used, since it implements the `std::io::Read` trait.
     ///     dst_encoding).unwrap();
     /// match guess_result {
     ///     transcoding_rs::GuessResult::Success(mut reader,enc) => {

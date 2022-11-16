@@ -19,7 +19,7 @@ pub struct Transcoder {
 impl Transcoder {
 
     /// Creates a new `Transcoder` with a source encoding and a destination encoding.
-    /// The source encoding is optional but if not specifed, `guess_and_transcode()` must be called before
+    /// The source encoding is optional but if not specified, `guess_and_transcode()` must be called before
     /// `transcode()` is called.
     /// Default buffer size is 8K bytes.
     ///
@@ -78,7 +78,7 @@ impl Transcoder {
     ///
     /// # Parameters
     ///  - src: The input to be encoded.
-    ///  - dst: The estination buffer the output is written to.
+    ///  - dst: The destination buffer the output is written to.
     ///  - last: Specify true if the input has reached EOF, or otherwise false.
     ///          This method can be called multiple times with this value being true,
     ///          until the method returns InputEmpty.
@@ -143,7 +143,7 @@ impl Transcoder {
     ///
     /// # Parameters
     ///  - src: The input to be encoded.
-    ///  - dst: The estination buffer the output is written to.
+    ///  - dst: The destination buffer the output is written to.
     ///  - non_ascii_to_guess: The number of non-ASCII characters to be used to guess the encoding.
     ///                        Non-ASCII here includes non-textual characters.
     ///  - non_text_threshold: The threshold to determine the guess is failed.
